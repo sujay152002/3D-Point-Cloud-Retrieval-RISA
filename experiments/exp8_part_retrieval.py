@@ -432,6 +432,60 @@ def part_prob_profile(part_dist: np.ndarray) -> list[tuple[str, float]]:
     return ranked
 
 
+# Build a lookup: generic part name (e.g. "leg") → list of global part IDs across all classes
+def _build_generic_part_index() -> dict[str, list[int]]:
+    idx: dict[str, list[int]] = defaultdict(list)
+    for cls_name, part_ids in zip(SHAPENET_CLASS_NAMES, SHAPE_NET_PART_SEG_CLASSES):
+        for local_i, gid in enumerate(part_ids):
+            pname = SHAPENET_PART_NAMES.get(cls_name, [])
+            name  = pname[local_i] if local_i < len(pname) else f"part{local_i}"
+            idx[name].append(gid)
+    return dict(idx)
+
+_GENERIC_PART_INDEX = _build_generic_part_index()
+
+
+def build_part_mean_profiles(part_dists: np.ndarray) -> dict[str, np.ndarray]:
+    """
+    For each generic part name (e.g. 'leg', 'body'), compute the mean
+    part distribution vector across all shapes that have a non-zero
+    fraction for any global part ID belonging to that name.
+
+    Returns dict: part_name → mean (n_parts,) vector.
+    """
+    means = {}
+    for name, gids in _GENERIC_PART_INDEX.items():
+        # shapes that have this part (any of its global IDs > 0)
+        mask = np.any(part_dists[:, gids] > 0, axis=1)
+        if mask.sum() == 0:
+            continue
+        means[name] = part_dists[mask].mean(axis=0)   # (n_parts,)
+    return means
+
+
+def cross_class_part_similarity(
+    part_dist: np.ndarray,
+    part_mean_profiles: dict[str, np.ndarray],
+    top_k: int = 5,
+) -> list[tuple[str, float]]:
+    """
+    Given a shape's part distribution, compute cosine similarity against
+    the mean profile of each generic part name across all classes.
+
+    e.g. a table/leg and chair/leg will both score high for 'leg' because
+    they share similar point-fraction geometry, regardless of class.
+
+    Returns top_k (part_name, similarity) pairs, sorted descending.
+    """
+    q = part_dist / (np.linalg.norm(part_dist) + 1e-8)
+    scores = []
+    for name, mean_vec in part_mean_profiles.items():
+        m = mean_vec / (np.linalg.norm(mean_vec) + 1e-8)
+        scores.append((name, float(q @ m)))
+    scores.sort(key=lambda x: -x[1])
+    return scores[:top_k]
+
+
 def part_distribution(part_labels: np.ndarray, n_parts: int) -> np.ndarray:
     """
     Compute the fraction of points belonging to each part.
@@ -465,6 +519,7 @@ def compute_part_map_at_k(
     k: int = 5,
     part_iou_threshold: float = 0.3,
     return_profiles: bool = False,
+    part_mean_profiles: dict | None = None,
 ) -> float | tuple[float, list[dict]]:
     """
     Part-aware mAP@k.
@@ -472,8 +527,10 @@ def compute_part_map_at_k(
     Relevance is stricter than class-only retrieval:
       relevant = same class AND part_iou(query, result) >= part_iou_threshold
 
-    If return_profiles=True, also returns per-query dicts with ranked part
-    probability profiles for the query and each retrieved result.
+    If return_profiles=True, also returns per-query dicts with cross-class
+    part similarity scores for the query and each retrieved result.
+    If part_mean_profiles is provided, uses cross_class_part_similarity;
+    otherwise falls back to raw part_prob_profile.
     """
     aps = []
     profiles = []
@@ -481,6 +538,11 @@ def compute_part_map_at_k(
         results = retrieval_fn(q_id)[:k]
         q_cls   = class_labels[q_id]
         q_dist  = part_dists[q_id]
+
+        def _profile(dist):
+            if part_mean_profiles is not None:
+                return cross_class_part_similarity(dist, part_mean_profiles)
+            return part_prob_profile(dist)
 
         rel = []
         result_profiles = []
@@ -496,7 +558,7 @@ def compute_part_map_at_k(
                     "score":       round(float(score), 4),
                     "relevant":    bool(same_class and iou >= part_iou_threshold),
                     "part_iou":    round(iou, 4),
-                    "part_probs":  part_prob_profile(part_dists[r_id]),
+                    "part_probs":  _profile(part_dists[r_id]),
                 })
 
         rel = np.array(rel[:k])
@@ -510,7 +572,7 @@ def compute_part_map_at_k(
             profiles.append({
                 "query_id":      q_id,
                 "query_class":   SHAPENET_CLASS_NAMES[q_cls] if q_cls < len(SHAPENET_CLASS_NAMES) else str(q_cls),
-                "query_parts":   part_prob_profile(q_dist),
+                "query_parts":   _profile(q_dist),
                 "ap":            round(aps[-1], 4),
                 "results":       result_profiles,
             })
@@ -847,9 +909,11 @@ def run_experiment(args):
             if pl is not None else np.zeros(n_total_parts)
             for pl in part_labels_list
         ])                                            # (N, 50)
+        part_mean_profiles = build_part_mean_profiles(part_dists)
     else:
         print("WARNING: No part labels found, part-mAP will be 0.")
         part_dists = np.zeros((N, n_total_parts))
+        part_mean_profiles = None
 
     # ── 3D SIFT descriptor extraction (with optional cache) ───────────────────
     import pickle
@@ -974,6 +1038,7 @@ def run_experiment(args):
             class_labels, part_dists, k=args.k_eval,
             part_iou_threshold=args.part_iou_threshold,
             return_profiles=True,
+            part_mean_profiles=part_mean_profiles,
         )
         results_dict["part_mAP@5"] = round(sift_part_map, 4)
 
@@ -1038,6 +1103,7 @@ def run_experiment(args):
                 class_labels, part_dists, k=args.k_eval,
                 part_iou_threshold=args.part_iou_threshold,
                 return_profiles=True,
+                part_mean_profiles=part_mean_profiles,
             )
 
         baseline_results[model_name] = {
