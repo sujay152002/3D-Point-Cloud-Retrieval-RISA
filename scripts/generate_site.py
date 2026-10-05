@@ -367,12 +367,15 @@ def build_exp4(old_data, perc_data):
         "This tests whether learned rotation-invariant features generalise beyond the training distribution. "
         "perceiver=False uses standard self-attention to update point features; "
         "perceiver=True uses a perceiver-style cross-attention where a fixed set of latent queries attend to point features, "
-        "decoupling the output dimensionality from the number of input points. "
+        "decoupling the output dimensionality from the number of input points and potentially improving robustness to variable point density. "
         f"perceiver=False R@1@0={r1_old}%, perceiver=True R@1@0={r1_perc}%. "
-        "Write 4-5 sentences covering: (1) which variant transfers better and by what margin, "
-        "(2) why the perceiver architecture may help or hurt generalisation to noisy real-world scans, "
-        "(3) what the cross-dataset gap reveals about the difficulty of sim-to-real transfer in 3D retrieval, "
-        "(4) practical implications for deploying retrieval systems on real sensor data."
+        "Write 6-7 sentences covering: (1) which variant transfers better and by what margin across all rotation angles, "
+        "(2) why the perceiver architecture may help or hurt generalisation to noisy real-world scans — consider how fixed latent queries "
+        "act as a bottleneck that filters noise, "
+        "(3) what the cross-dataset gap between ModelNet40 and ScanObjectNN reveals about the difficulty of sim-to-real transfer in 3D retrieval, "
+        "(4) how rotation invariance interacts with domain shift — does invariance help more or less when the target domain has sensor noise and occlusion, "
+        "(5) what the per-angle R@1 curves reveal about whether one variant degrades more under rotation in the real-world domain, "
+        "(6) practical implications for deploying retrieval systems on real sensor data such as LiDAR or RGB-D scans."
     )
     return dict(
         id="exp4", title="Exp 4 — Perceiver vs Standard RISA",
@@ -381,8 +384,9 @@ def build_exp4(old_data, perc_data):
             Models=tag_list(["RISA (perceiver=False)", "RISA (perceiver=True)"]),
             **{"Train Dataset": tag_list(["ModelNet40"])},
             **{"Test Dataset": tag_list(["ScanObjectNN"])},
-            Metric="R@1 · mAP@5",
+            Metric="R@1 · R@5 · mAP@5",
             Training="Proxy Anchor, 100 epochs",
+            Evaluation="SO(3) rotations 0°→180° (7 angles)",
         ),
         table=chart + tbl, ai=ai,
     )
