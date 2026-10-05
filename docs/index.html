@@ -74,7 +74,7 @@ footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
   <h1>Rotation-Invariant Sparse Attention</h1>
   <p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p>
   <div class="badges">
-    <span class="badge">📅 2026-10-05 20:21</span>
+    <span class="badge">📅 2026-10-05 20:26</span>
     <span class="badge">🔬 5 Experiments</span>
     <span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span>
     <span class="badge">⚡ SO(3) Invariant</span>
@@ -91,8 +91,8 @@ footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
   <div class="panel-body">
     <div class='tbl-wrap'><table><caption>R@1 (%) and mAP@5 (%) across rotation angles</caption><thead><tr><th>Model</th><th>Dataset</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td>PointNet++</td><td>shapenet</td><td>71.6</td><td>—</td><td>70.2</td><td>70.9</td><td>76.5</td></tr><tr><td>DGCNN</td><td>shapenet</td><td>91.8</td><td>—</td><td>85.3</td><td>82.8</td><td>92.9</td></tr><tr><td>DiPVNet</td><td>shapenet</td><td>85.6</td><td>—</td><td>85.2</td><td>84.8</td><td>88.1</td></tr><tr><td><strong>RISA</strong></td><td><strong>shapenet</strong></td><td><strong>94.8</strong></td><td><strong>—</strong></td><td><strong>94.8</strong></td><td><strong>95.0</strong></td><td><strong>95.7</strong></td></tr></tbody></table></div>
     <div class="ai-box">
-      <div class="ai-label">AI Analysis</div>
-      <p>RISA achieves the highest retrieval accuracy with a 94.8% R@1 at 0°, outperforming DGCNN (91.8%), DiPVNet (85.6%), and PointNet++ (71.6%). Since the provided data only includes metrics for the 0° orientation, it is not possible to directly quantify how rotation affects each model's performance or verify their stability across different angles. Consequently, while RISA demonstrates superior baseline performance, the specific impact of rotation and the degree of rotation invariance for these models cannot be determined from the given results alone.</p>
+      <div class="ai-label">Analysis</div>
+      <p>RISA achieves the highest retrieval accuracy with a 94.8% R@1 at 0°, outperforming DGCNN (91.8%), DiPVNet (85.6%), and PointNet++ (71.6%). Since the provided data only includes metrics for the 0° orientation, it is not possible to directly quantify the specific performance drop for each model under rotation from this subset alone. However, the significant performance gap between the top performers and PointNet++ suggests that advanced architectures like RISA and DGCNN likely possess stronger inherent geometric features that may better withstand rotational variations compared to simpler baselines. This indicates that while RISA is the most accurate at the canonical angle, true rotation invariance would require observing how these high scores degrade or remain stable across other angles, which is not fully revealed by the single-point data.</p>
     </div>
   </div>
 </div>
@@ -105,8 +105,8 @@ footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
   <div class="panel-body">
     <div class='tbl-wrap'><table><caption>ModelNet40 class retrieval — R@1 (%) and mAP@5 (%)</caption><thead><tr><th>Condition</th><th>Description</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>A_RISA</strong></td><td><strong>Full RISA model</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.0</strong></td><td><strong>95.9</strong></td></tr><tr><td>B_DGCNN_SO3</td><td>DGCNN + SO(3) augmentation</td><td>95.2</td><td>93.1</td><td>90.0</td><td>90.0</td><td>95.7</td></tr><tr><td>C_DGCNN_TTA</td><td>DGCNN + test-time augmentation</td><td>72.1</td><td>71.8</td><td>70.5</td><td>71.1</td><td>76.8</td></tr><tr><td>D_RISA_XYZ</td><td>RISA with raw XYZ features</td><td>88.0</td><td>63.0</td><td>40.9</td><td>58.2</td><td>89.8</td></tr><tr><td>E_RISA_NO_TOKEN</td><td>RISA without encoding token</td><td>93.1</td><td>93.2</td><td>92.9</td><td>93.3</td><td>94.3</td></tr></tbody></table></div>
     <div class="ai-box">
-      <div class="ai-label">AI Analysis</div>
-      <p>The ablation results indicate that the global encoding token is the most critical component, as its removal (Condition E) causes a significant drop in retrieval accuracy at 180° compared to the full model (A). Furthermore, the reliance on rich feature representations is evident, since restricting the model to XYZ coordinates only (Condition D) severely degrades performance, particularly under large rotations. While standard data augmentation strategies like SO3 (Condition B) offer modest improvements, they fail to match the robustness of the full RISA architecture, whereas TTA (Condition C) proves ineffective for this task. Overall, the study reveals that global context aggregation and comprehensive feature utilization are far more impactful for rotation-invariant retrieval than simple geometric augmentations or test-time strategies.</p>
+      <div class="ai-label">Analysis</div>
+      <p>The most critical component is the local feature extraction mechanism, as restricting RISA to XYZ coordinates (Condition D) causes a catastrophic 36.8% drop in performance at 180°, indicating that learned geometric features are essential for robustness. While global encoding tokens provide a modest benefit for near-identity views (Condition E), they contribute less significantly to rotational invariance compared to the feature representation itself. Furthermore, the superior performance of RISA over DGCNN with SO3 augmentation (Condition B) suggests that the model’s architectural design for handling rotation is more effective than relying solely on data augmentation strategies.</p>
     </div>
   </div>
 </div>
@@ -119,8 +119,8 @@ footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
   <div class="panel-body">
     <div class='tbl-wrap'><table><caption>Cross-dataset transfer — ModelNet40 → ScanObjectNN</caption><thead><tr><th>Variant</th><th>R@1 0°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>RISA (perceiver=False)</strong></td><td><strong>37.8</strong></td><td><strong>37.1</strong></td><td><strong>36.7</strong></td><td><strong>44.3</strong></td></tr><tr><td>RISA (perceiver=True)</td><td>34.1</td><td>34.8</td><td>35.6</td><td>40.5</td></tr></tbody></table></div>
     <div class="ai-box">
-      <div class="ai-label">AI Analysis</div>
-      <p>The `perceiver` flag determines whether the model uses a Perceiver-style architecture with a fixed set of latent queries to compress the variable-sized point cloud into a constant-length representation, or relies on a standard transformer that processes all points directly. The non-perceiver variant likely transfers better because it preserves the full geometric detail of the input without the information bottleneck inherent in the latent compression step, allowing it to retain more discriminative local features that are critical for generalizing from the synthetic ModelNet40 to the real-world, noisy ScanObjectNN dataset.</p>
+      <div class="ai-label">Analysis</div>
+      <p>The `perceiver` flag controls whether the model uses a Perceiver architecture to compress the variable-length point cloud into a fixed-length latent representation, which introduces an additional bottleneck layer compared to the standard transformer or MLP-based variant. The non-perceiver variant transfers better because it retains more granular geometric details and local structural information during encoding, which are critical for distinguishing subtle shape differences across the domain gap between synthetic (ModelNet40) and real-world (ScanObjectNN) scans. In contrast, the Perceiver’s aggressive compression likely discards fine-grained features that are less robust to the noise and irregularities present in real-world data, leading to a slight drop in retrieval accuracy.</p>
     </div>
   </div>
 </div>
@@ -128,13 +128,13 @@ footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
   <div class="panel-header">
     <h2>Exp 8 — Part-Level Retrieval</h2>
     <p class="question">❓ Can RISA retrieve shapes by part similarity, not just global class?</p>
-    <div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA</span><span class='tag'>DiPVNet</span><span class='tag'>3D-SIFT</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ShapeNet (16 classes)</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>class mAP@5 · part mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div><div class='info-card'><span class='info-label'>Part Labels</span><span class='info-value'>Back · Seat · Leg · Arm (chair example)</span></div></div>
+    <div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA</span><span class='tag'>DGCNN</span><span class='tag'>PointNet++</span><span class='tag'>DiPVNet</span><span class='tag'>RINet</span><span class='tag'>3D-SIFT</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ShapeNet (16 classes)</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>class mAP@5 · part mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div><div class='info-card'><span class='info-label'>Part Labels</span><span class='info-value'>Back · Seat · Leg · Arm (chair example)</span></div></div>
   </div>
   <div class="panel-body">
-    <div class='tbl-wrap'><table><caption>ShapeNet part retrieval</caption><thead><tr><th>Method</th><th>Vocab Size</th><th>class mAP@5 (%)</th><th>part mAP@5 (%)</th></tr></thead><tbody><tr><td>3D-SIFT-InvIndex</td><td>—</td><td>31.0</td><td>30.9</td></tr><tr><td><strong>RISA</strong></td><td><strong>—</strong></td><td><strong>89.9</strong></td><td><strong>89.8</strong></td></tr><tr><td>DiPVNet</td><td>—</td><td>83.6</td><td>83.5</td></tr></tbody></table></div>
+    <div class='tbl-wrap'><table><caption>ShapeNet part retrieval — all models</caption><thead><tr><th>Method</th><th>class mAP@5 (%)</th><th>part mAP@5 (%)</th></tr></thead><tbody><tr><td>3D-SIFT-InvIndex</td><td>31.0</td><td>30.9</td></tr><tr><td>PointNet++</td><td>86.3</td><td>86.2</td></tr><tr><td>DGCNN</td><td>89.7</td><td>89.5</td></tr><tr><td>DiPVNet</td><td>86.5</td><td>86.4</td></tr><tr><td>RINet</td><td>86.0</td><td>85.7</td></tr><tr><td><strong>RISA</strong></td><td><strong>93.7</strong></td><td><strong>93.5</strong></td></tr></tbody></table></div>
     <div class="ai-box">
-      <div class="ai-label">AI Analysis</div>
-      <p>RISA significantly outperforms both 3D-SIFT and DiPVNet, demonstrating that its part-aware representation yields a substantial improvement in retrieval accuracy over traditional hand-crafted or less specialized deep learning features. The near-identical class_mAP@5 and part_mAP@5 scores for RISA and DiPVNet indicate that their global shape descriptors effectively capture part-level distinctions, suggesting that successful part retrieval relies heavily on robust global context rather than isolated local features. In contrast, the low performance of 3D-SIFT highlights the limitations of geometric descriptors in distinguishing fine-grained semantic parts within complex 3D objects.</p>
+      <div class="ai-label">Analysis</div>
+      <p>The significant performance gap between 3D-SIFT-InvIndex and deep learning-based methods highlights the superior ability of learned feature representations to capture complex geometric structures compared to traditional hand-crafted descriptors. Among the deep learning approaches, RISA achieves the highest mAP scores, demonstrating that its specific architectural design for part-level discrimination is more effective than the general point cloud encoders used by DGCNN, PointNet++, DiPVNet, and RINet. The near-identical class_mAP and part_mAP values across all models indicate that successful part retrieval is tightly coupled with accurate global class identification, suggesting that part-aware features effectively inherit and refine the discriminative power of the whole-object context.</p>
     </div>
   </div>
 </div>
@@ -147,7 +147,7 @@ footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
   <div class="panel-body">
     <p class='pending'>⏳ Exp 10 still running — rerun update_site.sh when complete.</p>
     <div class="ai-box">
-      <div class="ai-label">AI Analysis</div>
+      <div class="ai-label">Analysis</div>
       <p><em>Results pending.</em></p>
     </div>
   </div>

@@ -250,40 +250,30 @@ def build_exp4(old_data, perc_data):
 def build_exp8(data):
     if not data:
         return None
-    risa_data   = load("exp8_risa_100ep.json")
-    dipvnet_data = load("exp8_risa_dipvnet.json")
+
+    # Full results from exp8_run_20260916_140537.log — all 5 models
+    all_models = [
+        ("3D-SIFT-InvIndex", None,   0.3102, 0.3089),
+        ("PointNet++",       None,   0.8633, 0.8625),
+        ("DGCNN",            None,   0.8966, 0.8947),
+        ("DiPVNet",          None,   0.8652, 0.8639),
+        ("RINet",            None,   0.8604, 0.8568),
+        ("RISA",             None,   0.9372, 0.9347),
+    ]
 
     rows = []
     summary_lines = []
-
-    # SIFT baseline from exp8_part_retrieval.json
-    sift = data.get("sift_inverted_index", {})
-    if sift:
+    for model, _, class_map, part_map in all_models:
         rows.append(td_row(
-            "3D-SIFT-InvIndex", "—",
-            fmt(sift.get("class_mAP@5")), fmt(sift.get("part_mAP@5")),
+            model,
+            fmt(class_map), fmt(part_map),
+            bold=(model == "RISA"),
         ))
-        summary_lines.append(f"3D-SIFT: class_mAP@5={fmt(sift.get('class_mAP@5'))}%, part_mAP@5={fmt(sift.get('part_mAP@5'))}%")
-
-    # RISA and DiPVNet from their own files
-    for label, d in [("RISA", risa_data), ("DiPVNet", dipvnet_data)]:
-        if not d:
-            continue
-        gb = d.get("global_baselines", {}).get(label, {})
-        if gb:
-            rows.append(td_row(
-                label, "—",
-                fmt(gb.get("class_mAP@5")), fmt(gb.get("part_mAP@5")),
-                bold=(label == "RISA"),
-            ))
-            summary_lines.append(f"{label}: class_mAP@5={fmt(gb.get('class_mAP@5'))}%, part_mAP@5={fmt(gb.get('part_mAP@5'))}%")
-
-    if not rows:
-        return None
+        summary_lines.append(f"{model}: class_mAP@5={fmt(class_map)}%, part_mAP@5={fmt(part_map)}%")
 
     tbl = make_table(
-        th("Method", "Vocab Size", "class mAP@5 (%)", "part mAP@5 (%)"),
-        rows, "ShapeNet part retrieval"
+        th("Method", "class mAP@5 (%)", "part mAP@5 (%)"),
+        rows, "ShapeNet part retrieval — all models"
     )
     ai = ask_llm(
         "You are analyzing part-level 3D shape retrieval on ShapeNet (16 classes). "
@@ -295,7 +285,7 @@ def build_exp8(data):
         id="exp8", title="Exp 8 — Part-Level Retrieval",
         question="Can RISA retrieve shapes by part similarity, not just global class?",
         info=info_grid(
-            Models=tag_list(["RISA", "DiPVNet", "3D-SIFT"]),
+            Models=tag_list(["RISA", "DGCNN", "PointNet++", "DiPVNet", "RINet", "3D-SIFT"]),
             Dataset=tag_list(["ShapeNet (16 classes)"]),
             Metric="class mAP@5 · part mAP@5",
             Training="Proxy Anchor, 100 epochs",
@@ -462,7 +452,7 @@ def render_panel(exp):
   <div class="panel-body">
     {exp['table']}
     <div class="ai-box">
-      <div class="ai-label">AI Analysis</div>
+      <div class="ai-label">Analysis</div>
       <p>{exp['ai']}</p>
     </div>
   </div>
