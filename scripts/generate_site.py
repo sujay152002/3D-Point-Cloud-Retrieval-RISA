@@ -235,14 +235,15 @@ def build_exp2(data):
         return None
     models = list(data.keys())
     print("  Running t-SNE for exp2 (this may take ~30s)...")
-    svgs = ""
+    blocks = ""
     for m in models:
         encs = data[m]["encodings"]
         labs = data[m]["labels"]
-        svgs += f'<div style="display:inline-block;margin:.5rem"><strong style="font-size:.85rem">{m}</strong>'
-        svgs += tsne_svg(encs, labs, width=300, height=220)
-        svgs += "</div>"
-    plot_wrap = f'<div style="overflow-x:auto;white-space:nowrap">{svgs}</div>'
+        blocks += (f'<div style="margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid #f0f0f0">'
+                   f'<p style="font-weight:700;font-size:.95rem;margin-bottom:.4rem">{m}</p>'
+                   + tsne_svg(encs, labs, width=520, height=300) +
+                   f'</div>')
+    plot_wrap = f'<div>{blocks}</div>'
     ai = ask_llm(
         "You are analyzing t-SNE visualizations of 3D shape embeddings on ShapeNet (8 classes). "
         f"Models compared: {', '.join(models)}. "
@@ -529,6 +530,14 @@ tbody tr:last-child td{border-bottom:none}
           letter-spacing:.08em;display:flex;align-items:center;gap:.4rem;margin-bottom:.6rem}
 .ai-box p{font-size:.93rem;line-height:1.7;color:#333}
 .pending{color:#888;font-style:italic;padding:1rem 0}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;padding:.5rem 0 1rem}
+.ov-card{background:#f8f9ff;border:1px solid #e8ecff;border-radius:10px;padding:1.2rem 1.4rem;
+         cursor:pointer;transition:all .2s}
+.ov-card:hover{border-color:#4a6cf7;box-shadow:0 4px 16px rgba(74,108,247,.12);transform:translateY(-2px)}
+.ov-num{font-size:.72rem;font-weight:800;color:#4a6cf7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}
+.ov-title{font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:.4rem}
+.ov-q{font-size:.82rem;color:#4a6cf7;font-style:italic;margin-bottom:.5rem;line-height:1.4}
+.ov-desc{font-size:.8rem;color:#666;line-height:1.5}
 footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
 """
 
@@ -542,31 +551,71 @@ function showTab(id) {
 """
 
 def render_panel(exp):
+    header_extra = (
+        f'<p class="question">{exp["question"]}</p>{exp["info"]}'
+        if exp.get("question") else ""
+    )
+    ai_box = (
+        f'<div class="ai-box"><div class="ai-label">Analysis</div><p>{exp["ai"]}</p></div>'
+        if exp.get("ai") else ""
+    )
     return (
         f'<div class="tab-panel" id="{exp["id"]}">'
         f'<div class="panel-header">'
         f'<h2>{exp["title"]}</h2>'
-        f'<p class="question">{exp["question"]}</p>'
-        f'{exp["info"]}'
+        f'{header_extra}'
         f'</div>'
         f'<div class="panel-body">'
         f'{exp["table"]}'
-        f'<div class="ai-box">'
-        f'<div class="ai-label">Analysis</div>'
-        f'<p>{exp["ai"]}</p>'
-        f'</div></div></div>'
+        f'{ai_box}'
+        f'</div></div>'
     )
+
+EXP_OVERVIEW = [
+    ("Exp 1",  "Cross-Dataset Retrieval",       "Do rotation-invariant features generalise across datasets without retraining?",
+     "Evaluates R@1 across 19 SO(3) rotation angles (0°→180°) on ShapeNet, comparing PointNet++, DGCNN, DiPVNet and RISA."),
+    ("Exp 2",  "Semantic Collapse",              "Do non-invariant models collapse semantically distinct shapes into the same embedding region?",
+     "t-SNE of 512-d embeddings for 1280 ShapeNet shapes (8 classes). Well-separated clusters indicate discriminative embeddings."),
+    ("Exp 3",  "Architecture Ablation",          "Which architectural components of RISA are essential for rotation-invariant retrieval?",
+     "5 conditions on ModelNet40: full RISA, DGCNN+SO3 aug, DGCNN+TTA, RISA with raw XYZ, RISA without encoding token."),
+    ("Exp 4",  "Perceiver vs Standard RISA",     "Does the perceiver-style attention update strategy improve cross-dataset transfer?",
+     "Trains on ModelNet40, tests on ScanObjectNN. Compares perceiver=True vs perceiver=False across all rotation angles."),
+    ("Exp 8",  "Part-Level Retrieval",           "Can RISA retrieve shapes by part similarity, not just global class?",
+     "ShapeNet part retrieval (16 classes). Reports class mAP@5 and part mAP@5 for 6 methods including 3D-SIFT and RISA."),
+    ("Exp 10", "Prior Point Selection Ablation", "Which geometric prior best selects K=256 informative points from N=1024?",
+     "7 priors on ModelNet40: full_N, random_K, fps_K, eigenentropy_K, surface_var_K, curvature_K, salient_K (learned)."),
+]
+
+def build_overview():
+    cards = "".join(
+        f'<div class="ov-card" onclick="showTab(\'exp{row[0].split()[1]}\')">'
+        f'<div class="ov-num">{row[0]}</div>'
+        f'<div class="ov-title">{row[1]}</div>'
+        f'<div class="ov-q">{row[2]}</div>'
+        f'<div class="ov-desc">{row[3]}</div>'
+        f'</div>'
+        for row in EXP_OVERVIEW
+    )
+    return dict(
+        id="overview", title="Overview",
+        question="",
+        info="",
+        table=f'<div class="ov-grid">{cards}</div>',
+        ai="",
+    )
+
 
 def build_html(experiments):
     from datetime import datetime
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    all_tabs = [build_overview()] + experiments
     tab_btns = "".join(
         f'<button class="tab-btn{" active" if i==0 else ""}" '
         f'data-tab="{e["id"]}" onclick="showTab(\'{e["id"]}\')">'
         f'{e["title"].split("—")[0].strip()}</button>'
-        for i, e in enumerate(experiments)
+        for i, e in enumerate(all_tabs)
     )
-    panels = "".join(render_panel(e) for e in experiments)
+    panels = "".join(render_panel(e) for e in all_tabs)
     return (
         f'<!DOCTYPE html><html lang="en"><head>'
         f'<meta charset="UTF-8">'
@@ -584,6 +633,7 @@ def build_html(experiments):
         f'</div></header>'
         f'<div class="tab-bar">{tab_btns}</div>'
         f'<div class="tab-panels">{panels}</div>'
+
         f'<footer>sujay152002 · Generated by generate_site.py</footer>'
         f'<script>{JS}</script>'
         f'</body></html>'
