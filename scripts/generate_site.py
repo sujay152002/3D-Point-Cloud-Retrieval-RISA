@@ -25,14 +25,14 @@ MODEL   = "qwen/qwen3.8-27b"
 
 # ── LLM ──────────────────────────────────────────────────────────────────────
 
-def ask_llm(prompt: str) -> str:
+def ask_llm(prompt: str, max_tokens: int = 900) -> str:
     if not TOKEN:
         return "<em>Set GROQ_API_KEY to enable explanations.</em>"
     payload = json.dumps({
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.4,
-        "max_tokens": 600,
+        "max_tokens": max_tokens,
     }).encode()
     req = urllib.request.Request(
         API_URL, data=payload,
@@ -174,11 +174,15 @@ def build_exp1(data):
         for m in models
     )
     ai = ask_llm(
-        "You are analyzing 3D point cloud retrieval results. Higher R@1 is better. "
-        "Rotation invariance means scores stay stable across angles 0-180 degrees. "
-        f"Results:\n{summary}\n"
-        "In 3-4 sentences, explain which model performs best, how rotation affects each model, "
-        "and what this reveals about rotation invariance."
+        "You are a researcher analyzing 3D point cloud retrieval results. "
+        "The task is shape retrieval under arbitrary SO(3) rotations — a model must return the same class of shape regardless of how it is rotated. "
+        "Higher R@1 means the top-1 retrieved shape matches the query class. "
+        "Rotation invariance means R@1 stays flat across all angles 0-180 degrees. "
+        f"Results (ShapeNet, 19 angles 0-180):\n{summary}\n"
+        "Write 5-6 sentences covering: (1) which model achieves the best R@1 and by how much, "
+        "(2) how each model degrades as rotation increases and what that reveals about their invariance, "
+        "(3) why RISA's architecture (sparse attention + rotation-invariant features) leads to stable performance, "
+        "(4) practical implications for real-world deployment where object orientation is unknown."
     )
     return dict(
         id="exp1", title="Exp 1 — Cross-Dataset Retrieval",
@@ -245,11 +249,14 @@ def build_exp2(data):
                    f'</div>')
     plot_wrap = f'<div>{blocks}</div>'
     ai = ask_llm(
-        "You are analyzing t-SNE visualizations of 3D shape embeddings on ShapeNet (8 classes). "
-        f"Models compared: {', '.join(models)}. "
-        "RISA is the proposed rotation-invariant model. "
-        "In 3 sentences, explain what well-separated clusters in t-SNE indicate about embedding quality, "
-        "and what semantic collapse means for retrieval performance."
+        "You are a researcher analyzing t-SNE visualizations of 3D shape embeddings. "
+        "Each model encodes 1280 ShapeNet shapes (8 classes, 160 per class) into 512-d vectors, then t-SNE projects to 2D. "
+        f"Models compared: {', '.join(models)}. RISA is the proposed rotation-invariant sparse attention model. "
+        "Write 5-6 sentences covering: (1) what tight, well-separated clusters in t-SNE indicate about a model's discriminative power, "
+        "(2) what semantic collapse means — when embeddings of different classes overlap — and why it destroys retrieval precision, "
+        "(3) why non-invariant models (PointNet++, DGCNN) are expected to show more collapse under rotation, "
+        "(4) what RISA's cluster structure reveals about how rotation invariance affects the embedding space geometry, "
+        "(5) the connection between cluster separation in t-SNE and mAP@5 retrieval metrics."
     )
     return dict(
         id="exp2", title="Exp 2 — Semantic Collapse",
@@ -297,11 +304,18 @@ def build_exp3(data):
         for c in conditions
     )
     ai = ask_llm(
-        "You are analyzing a 3D point cloud retrieval ablation on ModelNet40. "
-        "Conditions: A_RISA=full model, B_DGCNN_SO3=DGCNN+SO3 aug, C_DGCNN_TTA=DGCNN+TTA, "
-        "D_RISA_XYZ=RISA with XYZ features only, E_RISA_NO_TOKEN=RISA without global encoding token. "
+        "You are a researcher analyzing an ablation study for 3D point cloud retrieval on ModelNet40. "
+        "The goal is to identify which components of RISA are responsible for rotation-invariant retrieval. "
+        "Conditions: A_RISA=full model, B_DGCNN_SO3=DGCNN with SO(3) data augmentation during training, "
+        "C_DGCNN_TTA=DGCNN with test-time averaging over multiple rotations, "
+        "D_RISA_XYZ=RISA backbone but using raw XYZ coordinates instead of rotation-invariant features, "
+        "E_RISA_NO_TOKEN=RISA without the global encoding token that aggregates local attention. "
         f"Results:\n{summary}\n"
-        "In 3-4 sentences, explain which components matter most and what the ablation reveals."
+        "Write 5-6 sentences covering: (1) which condition performs best and worst and by what margin, "
+        "(2) what the gap between A and D reveals about the importance of rotation-invariant input features vs architecture, "
+        "(3) what removing the encoding token (E) costs and why that token matters for global shape representation, "
+        "(4) whether augmentation-based approaches (B, C) are competitive and what their trade-offs are, "
+        "(5) the key architectural insight the ablation confirms."
     )
     return dict(
         id="exp3", title="Exp 3 — Architecture Ablation",
@@ -348,11 +362,17 @@ def build_exp4(old_data, perc_data):
     r1_old  = fmt(key_angles(list(old_data.values())[0]).get(0, {}).get("r1"))
     r1_perc = fmt(key_angles(list(perc_data.values())[0]).get(0, {}).get("r1"))
     ai = ask_llm(
-        "You are comparing two RISA variants on cross-dataset 3D retrieval transfer "
-        "(trained on ModelNet40, tested on ScanObjectNN). "
-        f"perceiver=False: R@1@0={r1_old}%, perceiver=True: R@1@0={r1_perc}%. "
-        "In 2-3 sentences, explain what the perceiver flag controls architecturally "
-        "and why one variant transfers better across datasets."
+        "You are a researcher analyzing cross-dataset transfer for 3D point cloud retrieval. "
+        "The model is trained on ModelNet40 (synthetic CAD models) and tested on ScanObjectNN (real-world scanned objects with noise and occlusion). "
+        "This tests whether learned rotation-invariant features generalise beyond the training distribution. "
+        "perceiver=False uses standard self-attention to update point features; "
+        "perceiver=True uses a perceiver-style cross-attention where a fixed set of latent queries attend to point features, "
+        "decoupling the output dimensionality from the number of input points. "
+        f"perceiver=False R@1@0={r1_old}%, perceiver=True R@1@0={r1_perc}%. "
+        "Write 4-5 sentences covering: (1) which variant transfers better and by what margin, "
+        "(2) why the perceiver architecture may help or hurt generalisation to noisy real-world scans, "
+        "(3) what the cross-dataset gap reveals about the difficulty of sim-to-real transfer in 3D retrieval, "
+        "(4) practical implications for deploying retrieval systems on real sensor data."
     )
     return dict(
         id="exp4", title="Exp 4 — Perceiver vs Standard RISA",
@@ -392,10 +412,16 @@ def build_exp8(data):
         rows, "ShapeNet part retrieval — all 6 methods"
     )
     ai = ask_llm(
-        "You are analyzing part-level 3D shape retrieval on ShapeNet (16 classes). "
+        "You are a researcher analyzing part-level 3D shape retrieval on ShapeNet (16 object categories). "
+        "Part-level retrieval means the query is a shape and the goal is to retrieve shapes with similar part structure "
+        "(e.g. a chair with similar legs), not just the same global class. "
+        "class mAP@5 measures retrieval by object category; part mAP@5 measures retrieval by part label agreement. "
         f"Results:\n{chr(10).join(summary_lines)}\n"
-        "In 3 sentences, explain the performance differences and what they reveal "
-        "about part-aware retrieval."
+        "Write 5-6 sentences covering: (1) the overall ranking of methods and the gap between RISA and the next best, "
+        "(2) why 3D-SIFT performs so much worse and what that reveals about hand-crafted vs learned features, "
+        "(3) the difference between class mAP@5 and part mAP@5 scores — what it means when a model scores high on class but lower on parts, "
+        "(4) why rotation invariance specifically helps part-level retrieval where part orientation varies, "
+        "(5) what this experiment demonstrates about RISA's ability to capture fine-grained geometric structure."
     )
     return dict(
         id="exp8", title="Exp 8 — Part-Level Retrieval",
@@ -457,13 +483,21 @@ def build_exp10(data):
         for p in priors
     )
     ai = ask_llm(
-        "You are analyzing a point selection prior ablation for 3D retrieval. "
-        "full_N=all 1024 pts, random_K=random 256, fps_K=farthest point sampling, "
-        "eigenentropy_K=top-256 by geometric complexity, surface_var_K=top-256 by surface variation, "
-        "curvature_K=top-256 by anisotropy, salient_K=top-256 by learned attention weights. "
+        "You are a researcher analyzing a point selection prior ablation for 3D shape retrieval. "
+        "The model processes N=1024 points but a prior selects K=256 points before the main attention layers, "
+        "reducing compute while ideally keeping the most informative points. "
+        "full_N=all 1024 points (compute baseline), random_K=random 256 (information lower bound), "
+        "fps_K=farthest point sampling (uniform spatial coverage), "
+        "eigenentropy_K=top-256 by local eigenentropy (regions of geometric complexity), "
+        "surface_var_K=top-256 by surface variation (high-curvature regions), "
+        "curvature_K=top-256 by anisotropy (edge-like regions), "
+        "salient_K=top-256 by learned encoder attention weights (data-driven saliency). "
         f"Results:\n{summary}\n"
-        "In 4 sentences: which prior works best, does K=256 beat full N=1024, "
-        "and what does this tell us about which points carry the most discriminative information?"
+        "Write 5-6 sentences covering: (1) which prior achieves the best R@1 and mAP@5, "
+        "(2) whether K=256 with a good prior can match or beat full N=1024 and what that implies about point cloud redundancy, "
+        "(3) how geometric priors (eigenentropy, surface_var, curvature) compare to the learned salient_K prior, "
+        "(4) why random_K is a useful lower bound and what the gap to fps_K reveals, "
+        "(5) the practical implication: can we run RISA 4x faster with minimal accuracy loss by choosing the right prior?"
     )
     return dict(
         id="exp10", title="Exp 10 — Prior Point Selection Ablation",
@@ -556,7 +590,7 @@ def render_panel(exp):
         if exp.get("question") else ""
     )
     ai_box = (
-        f'<div class="ai-box"><div class="ai-label">Analysis</div><p>{exp["ai"]}</p></div>'
+        f'<div class="ai-box"><div class="ai-label">{exp.get("ai_label", "Analysis")}</div><p>{exp["ai"]}</p></div>'
         if exp.get("ai") else ""
     )
     return (
@@ -596,12 +630,29 @@ def build_overview():
         f'</div>'
         for row in EXP_OVERVIEW
     )
+    exp_summary = "\n".join(
+        f"{r[0]} ({r[1]}): {r[3]}" for r in EXP_OVERVIEW
+    )
+    synthesis = ask_llm(
+        "You are writing a research summary for a paper on RISA: Rotation-Invariant Sparse Attention for 3D point cloud retrieval. "
+        "The paper runs 6 experiments to validate the approach from multiple angles. "
+        f"Experiment summaries:\n{exp_summary}\n"
+        "Write a cohesive 6-8 sentence narrative that: "
+        "(1) states the core problem RISA solves (rotation sensitivity in 3D retrieval), "
+        "(2) summarises what each experiment contributes to the overall argument, "
+        "(3) explains how the experiments build on each other — from basic retrieval to ablation to part-level to efficiency, "
+        "(4) highlights the strongest evidence that RISA works, "
+        "(5) acknowledges any limitations or open questions the experiments reveal. "
+        "Write in a clear academic tone suitable for a results webpage.",
+        max_tokens=1200,
+    )
     return dict(
         id="overview", title="Overview",
         question="",
         info="",
         table=f'<div class="ov-grid">{cards}</div>',
-        ai="",
+        ai=synthesis,
+        ai_label="Paper Summary",
     )
 
 
