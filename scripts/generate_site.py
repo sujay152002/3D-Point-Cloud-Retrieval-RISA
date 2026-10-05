@@ -147,43 +147,34 @@ def build_exp1(data):
         return None
     models   = list(data.keys())
     datasets = list(data[models[0]].keys())
+    ds0      = datasets[0]
 
-    # Table with key angles
+    # All 19 angles — one row per angle, one column per model
+    all_angles = sorted({r["angle"] for r in data[models[0]][ds0]})
+    # index: data[model][ds] -> {angle: record}
+    idx = {m: {r["angle"]: r for r in data[m][ds0]} for m in models}
     rows = []
-    for m in models:
-        for ds in datasets:
-            ka = key_angles(data[m][ds])
-            rows.append(td_row(
-                m, ds,
-                fmt(ka.get(0,   {}).get("r1")),
-                fmt(ka.get(45,  {}).get("r1")),
-                fmt(ka.get(90,  {}).get("r1")),
-                fmt(ka.get(180, {}).get("r1")),
-                fmt(ka.get(0,   {}).get("map5")),
-                bold=(m == "RISA"),
-            ))
+    for a in all_angles:
+        cols = [f"{int(a)}°"] + [fmt(idx[m].get(a, {}).get("r1")) for m in models]
+        rows.append(td_row(*cols))
     tbl = make_table(
-        th("Model", "Dataset", "R@1 0°", "R@1 45°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
-        rows, "R@1 (%) at key angles"
+        th("Angle", *models),
+        rows, "R@1 (%) at every rotation angle — ShapeNet"
     )
 
-    # Line chart — R@1 vs angle for each model on shapenet
-    ds0 = datasets[0]
+    # Line chart
     series = [
-        (m, COLORS[i % len(COLORS)],
-         [(r["angle"], r["r1"]) for r in data[m][ds0]])
+        (m, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[m][ds0]])
         for i, m in enumerate(models)
     ]
     chart = line_chart(series, width=560, height=90)
 
     summary = "\n".join(
-        f"{m}: " + ", ".join(
-            f"{ds} R@1@0={fmt(key_angles(data[m][ds]).get(0,{}).get('r1'))}%"
-            for ds in datasets)
+        f"{m}: R@1@0={fmt(idx[m].get(0,{}).get('r1'))}%, R@1@90={fmt(idx[m].get(90,{}).get('r1'))}%, R@1@180={fmt(idx[m].get(180,{}).get('r1'))}%"
         for m in models
     )
     ai = ask_llm(
-        "You are analyzing 3D point cloud retrieval results. Higher R@1 and mAP@5 is better. "
+        "You are analyzing 3D point cloud retrieval results. Higher R@1 is better. "
         "Rotation invariance means scores stay stable across angles 0-180 degrees. "
         f"Results:\n{summary}\n"
         "In 3-4 sentences, explain which model performs best, how rotation affects each model, "
@@ -200,6 +191,75 @@ def build_exp1(data):
             Evaluation="SO(3) rotations 0°→180° (19 angles)",
         ),
         table=chart + tbl, ai=ai,
+    )
+
+
+def tsne_svg(encodings, labels, title="", width=520, height=320):
+    """Run t-SNE on encodings and return an inline SVG scatter plot."""
+    import numpy as np
+    from sklearn.manifold import TSNE
+    X = np.array(encodings, dtype=np.float32)
+    # PCA to 50 dims first for speed
+    from sklearn.decomposition import PCA
+    n_comp = min(50, X.shape[1], X.shape[0] - 1)
+    X50 = PCA(n_components=n_comp, random_state=42).fit_transform(X)
+    xy = TSNE(n_components=2, perplexity=30, random_state=42, max_iter=500).fit_transform(X50)
+    # normalise to [pad, W-pad] x [pad, H-pad]
+    pad = 20
+    mn, mx = xy.min(0), xy.max(0)
+    rng = mx - mn
+    rng[rng == 0] = 1
+    xs = pad + (xy[:, 0] - mn[0]) / rng[0] * (width  - 2 * pad)
+    ys = pad + (xy[:, 1] - mn[1]) / rng[1] * (height - 2 * pad)
+    palette = ["#4a6cf7","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#34495e"]
+    unique_labels = sorted(set(labels))
+    color_map = {l: palette[i % len(palette)] for i, l in enumerate(unique_labels)}
+    dots = "".join(
+        f'<circle cx="{xs[i]:.1f}" cy="{ys[i]:.1f}" r="2.5" fill="{color_map[labels[i]]}" opacity="0.7"/>'
+        for i in range(len(labels))
+    )
+    legend = "".join(
+        f'<rect x="{(i%4)*120+pad}" y="{height+4+(i//4)*16}" width="10" height="10" fill="{color_map[l]}"/>'
+        f'<text x="{(i%4)*120+pad+14}" y="{height+13+(i//4)*16}" font-size="10" fill="#555">class {l}</text>'
+        for i, l in enumerate(unique_labels)
+    )
+    legend_h = ((len(unique_labels) - 1) // 4 + 1) * 16 + 8
+    cap = f'<text x="{width//2}" y="{height+legend_h+18}" font-size="11" fill="#888" text-anchor="middle">{title}</text>' if title else ""
+    total_h = height + legend_h + (24 if title else 4)
+    return (f'<svg width="{width}" height="{total_h}" style="display:block;margin:.5rem auto 1rem">'
+            f'{dots}{legend}{cap}</svg>')
+
+
+def build_exp2(data):
+    if not data:
+        return None
+    models = list(data.keys())
+    print("  Running t-SNE for exp2 (this may take ~30s)...")
+    svgs = ""
+    for m in models:
+        encs = data[m]["encodings"]
+        labs = data[m]["labels"]
+        svgs += f'<div style="display:inline-block;margin:.5rem"><strong style="font-size:.85rem">{m}</strong>'
+        svgs += tsne_svg(encs, labs, width=300, height=220)
+        svgs += "</div>"
+    plot_wrap = f'<div style="overflow-x:auto;white-space:nowrap">{svgs}</div>'
+    ai = ask_llm(
+        "You are analyzing t-SNE visualizations of 3D shape embeddings on ShapeNet (8 classes). "
+        f"Models compared: {', '.join(models)}. "
+        "RISA is the proposed rotation-invariant model. "
+        "In 3 sentences, explain what well-separated clusters in t-SNE indicate about embedding quality, "
+        "and what semantic collapse means for retrieval performance."
+    )
+    return dict(
+        id="exp2", title="Exp 2 — Semantic Collapse",
+        question="Do non-invariant models collapse semantically distinct shapes into the same embedding region?",
+        info=info_grid(
+            Models=tag_list(models),
+            Dataset=tag_list(["ShapeNet (8 classes)"]),
+            Metric="t-SNE of 512-d embeddings",
+            Samples="1280 (160 per class)",
+        ),
+        table=plot_wrap, ai=ai,
     )
 
 
@@ -518,7 +578,7 @@ def build_html(experiments):
         f'<p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p>'
         f'<div class="badges">'
         f'<span class="badge">📅 {ts}</span>'
-        f'<span class="badge">🔬 5 Experiments</span>'
+        f'<span class="badge">🔬 6 Experiments</span>'
         f'<span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span>'
         f'<span class="badge">⚡ SO(3) Invariant</span>'
         f'</div></header>'
@@ -537,6 +597,7 @@ def main():
     experiments = []
     steps = [
         ("exp1",  lambda: build_exp1(load("exp1_retrieval.json"))),
+        ("exp2",  lambda: build_exp2(load("exp2_semantic_collapse_shapenet.json"))),
         ("exp3",  lambda: build_exp3(load("exp3_ablation.json"))),
         ("exp4",  lambda: build_exp4(load("exp4_risa_old_100ep.json"), load("exp4_risa_perceiver_100ep.json"))),
         ("exp8",  lambda: build_exp8(load("exp8_part_retrieval.json"))),
