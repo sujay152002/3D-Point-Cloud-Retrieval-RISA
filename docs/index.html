@@ -33,7 +33,7 @@ footer { text-align: center; padding: 2rem; color: #999; font-size: 0.8rem; }
 <body>
 <header>
   <h1>Rotation-Invariant Sparse Attention (RISA)</h1>
-  <p>3D Point Cloud Retrieval — Experiment Results &nbsp;·&nbsp; Generated 2026-10-05 19:47</p>
+  <p>3D Point Cloud Retrieval — Experiment Results &nbsp;·&nbsp; Generated 2026-10-05 20:14</p>
 </header>
 <main>
 
@@ -43,7 +43,7 @@ footer { text-align: center; padding: 2rem; color: #999; font-size: 0.8rem; }
   <div class='table-wrap'><table><caption>Retrieval R@1 (%) across rotation angles</caption><thead><tr><th>Model</th><th>Dataset</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td>PointNet++</td><td>shapenet</td><td>71.6</td><td>—</td><td>70.2</td><td>70.9</td><td>76.5</td></tr><tr><td>DGCNN</td><td>shapenet</td><td>91.8</td><td>—</td><td>85.3</td><td>82.8</td><td>92.9</td></tr><tr><td>DiPVNet</td><td>shapenet</td><td>85.6</td><td>—</td><td>85.2</td><td>84.8</td><td>88.1</td></tr><tr><td><strong>RISA</strong></td><td><strong>shapenet</strong></td><td><strong>94.8</strong></td><td><strong>—</strong></td><td><strong>94.8</strong></td><td><strong>95.0</strong></td><td><strong>95.7</strong></td></tr></tbody></table></div>
   <div class="ai-box">
     <span class="ai-label">&#x2728; AI Analysis</span>
-    <p><em>LLM error: <urlopen error [Errno -2] Name or service not known></em></p>
+    <p>RISA achieves the highest performance with an R@1 score of 94.8% at 0°, outperforming DGCNN (91.8%), DiPVNet (85.6%), and PointNet++ (71.6%). Since the provided data only includes metrics for the 0° angle, it is not possible to directly quantify how rotation affects performance or assess stability across different angles. Consequently, while RISA is the top performer in this specific configuration, the current results are insufficient to determine which model possesses superior rotation invariance.</p>
   </div>
 </section>
 
@@ -53,7 +53,7 @@ footer { text-align: center; padding: 2rem; color: #999; font-size: 0.8rem; }
   <div class='table-wrap'><table><caption>ModelNet40 ablation — R@1 (%) and mAP@5 (%)</caption><thead><tr><th>Condition</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>A_RISA</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.0</strong></td><td><strong>95.9</strong></td></tr><tr><td>B_DGCNN_SO3</td><td>95.2</td><td>93.1</td><td>90.0</td><td>90.0</td><td>95.7</td></tr><tr><td>C_DGCNN_TTA</td><td>72.1</td><td>71.8</td><td>70.5</td><td>71.1</td><td>76.8</td></tr><tr><td>D_RISA_XYZ</td><td>88.0</td><td>63.0</td><td>40.9</td><td>58.2</td><td>89.8</td></tr><tr><td>E_RISA_NO_TOKEN</td><td>93.1</td><td>93.2</td><td>92.9</td><td>93.3</td><td>94.3</td></tr></tbody></table></div>
   <div class="ai-box">
     <span class="ai-label">&#x2728; AI Analysis</span>
-    <p><em>LLM error: <urlopen error [Errno -2] Name or service not known></em></p>
+    <p>The ablation study reveals that the encoding token is the most critical component for achieving robust rotation invariance, as removing it (Condition E) causes a significant performance drop at 180° compared to the full model (A). Furthermore, the reliance on XYZ features is substantial, with their removal (Condition D) leading to a severe degradation in retrieval accuracy under high rotation angles, far worse than the impact of removing the token. While DGCNN with SO3 augmentation (B) performs competitively at low rotations, it lacks the consistent high-level invariance of the full RISA model, whereas test-time augmentation alone (C) proves insufficient for maintaining accuracy across varying orientations.</p>
   </div>
 </section>
 
@@ -63,7 +63,7 @@ footer { text-align: center; padding: 2rem; color: #999; font-size: 0.8rem; }
   <div class='table-wrap'><table><caption>Cross-dataset transfer — ModelNet40 → ScanObjectNN</caption><thead><tr><th>Variant</th><th>R@1 0°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>RISA (perceiver=False)</strong></td><td><strong>37.8</strong></td><td><strong>37.1</strong></td><td><strong>36.7</strong></td><td><strong>44.3</strong></td></tr><tr><td>RISA (perceiver=True)</td><td>34.1</td><td>34.8</td><td>35.6</td><td>40.5</td></tr></tbody></table></div>
   <div class="ai-box">
     <span class="ai-label">&#x2728; AI Analysis</span>
-    <p><em>LLM error: <urlopen error [Errno -2] Name or service not known></em></p>
+    <p>The `perceiver` flag determines whether the model uses a Perceiver architecture, which employs a fixed set of learned latent arrays to compress the variable-length point cloud representation, versus a standard transformer that processes all points directly. The variant with `perceiver=False` transfers better because it retains a higher-fidelity, dense representation of the local geometric structure, which is more robust to the domain shift between the synthetic ModelNet40 and the real-world ScanObjectNN datasets. In contrast, the Perceiver's aggressive compression into a small number of latents likely discards fine-grained geometric details necessary for accurate cross-dataset retrieval.</p>
   </div>
 </section>
 
@@ -73,7 +73,7 @@ footer { text-align: center; padding: 2rem; color: #999; font-size: 0.8rem; }
   <div class='table-wrap'><table><caption>ShapeNet part retrieval</caption><thead><tr><th>Method</th><th>R@1</th><th>class mAP@5</th><th>part mAP@5</th></tr></thead><tbody><tr><td>3D-SIFT-InvIndex</td><td>—</td><td>31.0</td><td>30.9</td></tr><tr><td>global_baselines</td><td>—</td><td>—</td><td>—</td></tr><tr><td>attribute_words</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div>
   <div class="ai-box">
     <span class="ai-label">&#x2728; AI Analysis</span>
-    <p><em>LLM error: <urlopen error [Errno -2] Name or service not known></em></p>
+    <p>The provided data indicates that 3D-SIFT-InvIndex achieves a class_mAP@5 of 31.0% and a part_mAP@5 of 30.9%, while the global baselines and attribute words lack reported metrics, preventing a direct quantitative comparison. The near-identical performance scores for class-level and part-level retrieval suggest that the 3D-SIFT-InvIndex method does not significantly differentiate between whole-object and part-specific queries in its ranking capability. This parity reveals that the method may rely on global geometric features that are equally effective for both granularities, or that the part-level retrieval task is not leveraging distinct part-aware mechanisms to outperform the standard class-level baseline.</p>
   </div>
 </section>
 

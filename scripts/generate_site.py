@@ -1,10 +1,10 @@
 """Generate docs/index.html from experiment result JSONs.
 
-Uses GitHub Models API (GPT-4o) to generate narrative explanations.
+Uses Google Gemini API to generate narrative explanations.
 Run manually before pushing to GitHub Pages.
 
 Usage:
-    export GITHUB_TOKEN="your_token"
+    export GEMINI_API_KEY="your_key"
     python3 scripts/generate_site.py
 """
 
@@ -17,16 +17,16 @@ from pathlib import Path
 ROOT      = Path(__file__).parent.parent
 OUTPUTS   = ROOT / "outputs"
 DOCS      = ROOT / "docs"
-TOKEN     = os.environ.get("GITHUB_TOKEN", "")
-API_URL   = "https://models.inference.ai.azure.com/chat/completions"
-MODEL     = "gpt-4o"
+TOKEN     = os.environ.get("GROQ_API_KEY", "")
+API_URL   = "https://api.groq.com/openai/v1/chat/completions"
+MODEL     = "qwen/qwen3.8-27b"
 
 
 # ── LLM call ─────────────────────────────────────────────────────────────────
 
 def ask_llm(prompt: str) -> str:
     if not TOKEN:
-        return "<em>Set GITHUB_TOKEN to enable AI explanations.</em>"
+        return "<em>Set GROQ_API_KEY to enable AI explanations.</em>"
     payload = json.dumps({
         "model": MODEL,
         "messages": [{"role": "user", "content": prompt}],
@@ -37,18 +37,27 @@ def ask_llm(prompt: str) -> str:
         API_URL,
         data=payload,
         headers={
-            "Authorization": f"Bearer {TOKEN}",
+            "Authorization": f"Bearer {TOKEN.strip()}",
             "Content-Type": "application/json",
+            "User-Agent": "python-urllib/3",
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-            return data["choices"][0]["message"]["content"].strip()
-    except urllib.error.HTTPError as e:
-        return f"<em>LLM error {e.code}: {e.reason}</em>"
-    except Exception as e:
-        return f"<em>LLM error: {e}</em>"
+    import time
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+                return data["choices"][0]["message"]["content"].strip()
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < 2:
+                time.sleep(5 * (attempt + 1))
+                continue
+            return f"<em>LLM error {e.code}: {e.reason}</em>"
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(5 * (attempt + 1))
+                continue
+            return f"<em>LLM error: {e}</em>"
 
 
 # ── Data loaders ──────────────────────────────────────────────────────────────
