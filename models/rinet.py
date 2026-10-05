@@ -435,8 +435,8 @@ class RINet(nn.Module):
         x = torch.cat((x1, x2, x3, x4), dim=1) # (32, 512, 1024)
         x = self.conv5(x) # (32, 1024, 1024)
         
-        x1 = F.adaptive_max_pool1d(x, 1).squeeze() # (32, 1024)
-        x2 = F.adaptive_avg_pool1d(x, 1).squeeze() # (32, 1024)
+        x1 = F.adaptive_max_pool1d(x, 1).squeeze(-1) # (32, 1024)
+        x2 = F.adaptive_avg_pool1d(x, 1).squeeze(-1) # (32, 1024)
 
         x = torch.cat((x1, x2), 1) # (32, 2048)
         x = F.leaky_relu(self.bn6(self.linear1(x)), negative_slope=0.2) # (32, 512)

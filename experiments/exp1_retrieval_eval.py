@@ -18,10 +18,17 @@ import json
 import sys, io
 sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
 from pathlib import Path
+from datetime import datetime
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+
+try:
+    from torch.utils.tensorboard import SummaryWriter as _TBWriter
+    _TB_AVAILABLE = True
+except ImportError:
+    _TB_AVAILABLE = False
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
@@ -57,14 +64,27 @@ def _build_registry():
     }
 
 
-def _build_encoder(name, cls):
+def _build_encoder(name, cls, checkpoint_dir=None):
     if name == "RISA":
         from models import RotationInvariantSparseAttention
-        return RotationInvariantSparseAttention(
+        enc = RotationInvariantSparseAttention(
             encoding_out_dim=512, features_out_dim=256,
             model_dim=256, num_blocks=4,
         )
-    return cls()
+    else:
+        enc = cls()
+    if checkpoint_dir:
+        import glob
+        # match by class name substring, e.g. DGCNNEncoder, PointNet2Encoder
+        pattern = str(Path(checkpoint_dir) / f"*_{enc.__class__.__name__}.pt")
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            ckpt = matches[-1]  # latest
+            enc.load_state_dict(torch.load(ckpt, map_location="cpu"))
+            print(f"  Loaded checkpoint: {ckpt}")
+        else:
+            print(f"  WARNING: no checkpoint found for {name} in {checkpoint_dir}, using random weights")
+    return enc
 
 
 # ── Rotation helpers ──────────────────────────────────────────────────────────
@@ -240,6 +260,8 @@ def main():
     parser.add_argument("--n_random",  type=int,  default=5,
                         help="Random SO(3) rotations per angle for averaging")
     parser.add_argument("--seed",      type=int,  default=42)
+    parser.add_argument("--checkpoint_dir", type=str, default=None,
+                        help="Load saved checkpoints from this dir instead of training from scratch")
     parser.add_argument("--out",       default="outputs/exp1_retrieval.json")
     args = parser.parse_args()
 
@@ -268,8 +290,9 @@ def main():
                 print(f"  Cannot load {ds_name}: {e} — skipping")
                 continue
 
-            encoder = _build_encoder(model_name, model_cls).to(DEVICE)
-            quick_train(encoder, ds_name, epochs=args.epochs, seed=args.seed)
+            encoder = _build_encoder(model_name, model_cls, args.checkpoint_dir).to(DEVICE)
+            if not args.checkpoint_dir:
+                quick_train(encoder, ds_name, epochs=args.epochs, seed=args.seed)
 
             # Build database from canonical (unrotated) encodings
             print("  Building database...", flush=True)
@@ -304,11 +327,24 @@ def main():
             del encoder
             torch.cuda.empty_cache()
 
+    if _TB_AVAILABLE:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tb = _TBWriter(log_dir=f"runs/experiment1/{ts}")
+        for model_name, ds_dict in results.items():
+            for ds_name, angle_results in ds_dict.items():
+                for entry in angle_results:
+                    step = int(entry["angle"])
+                    tb.add_scalar(f"{model_name}/{ds_name}/R@1",   entry["r1"],   step)
+                    tb.add_scalar(f"{model_name}/{ds_name}/R@5",   entry["r5"],   step)
+                    tb.add_scalar(f"{model_name}/{ds_name}/mAP@5", entry["map5"], step)
+        tb.close()
+        print(f"TensorBoard logs → runs/experiment1/{ts}")
+
     out_path = ROOT / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\nResults saved → {out_path}")
+    print(f"Results saved → {out_path}")
 
 
 if __name__ == "__main__":

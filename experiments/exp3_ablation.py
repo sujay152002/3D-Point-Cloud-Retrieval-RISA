@@ -157,13 +157,17 @@ def main():
     from models import RotationInvariantSparseAttention, DGCNNEncoder
 
     conditions = {
-        "A_RISA"       : RotationInvariantSparseAttention(
-                             encoding_out_dim=512, features_out_dim=256,
-                             model_dim=256, num_blocks=4),
-        "B_DGCNN_SO3"  : DGCNNEncoder(),
-        "C_DGCNN_TTA"  : DGCNNEncoder(),
-        "D_RISA_XYZ"   : RISAXYZBaseline(
-                             model_dim=256, num_blocks=4, encoding_out_dim=512),
+        "A_RISA"           : RotationInvariantSparseAttention(
+                                 encoding_out_dim=512, features_out_dim=256,
+                                 model_dim=256, num_blocks=4),
+        "B_DGCNN_SO3"      : DGCNNEncoder(),
+        "C_DGCNN_TTA"      : DGCNNEncoder(),
+        "D_RISA_XYZ"       : RISAXYZBaseline(
+                                 model_dim=256, num_blocks=4, encoding_out_dim=512),
+        "E_RISA_NO_TOKEN"  : RotationInvariantSparseAttention(
+                                 encoding_out_dim=512, features_out_dim=256,
+                                 model_dim=256, num_blocks=4,
+                                 encoding_method="mean"),
     }
 
     results = {}

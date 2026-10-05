@@ -41,6 +41,12 @@ import torch
 import torch.nn.functional as F
 from sklearn.cluster import MiniBatchKMeans
 
+try:
+    from torch.utils.tensorboard import SummaryWriter as _TBWriter
+    _TB_AVAILABLE = True
+except ImportError:
+    _TB_AVAILABLE = False
+
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -630,6 +636,7 @@ def _build_encoder(name: str):
         return RotationInvariantSparseAttention(
             encoding_out_dim=512, features_out_dim=256,
             model_dim=256, num_blocks=4,
+            num_global=32, grad_checkpoint=False,
         )
     return registry[name]()
 
@@ -691,10 +698,87 @@ class ProxyAnchorLoss(torch.nn.Module):
         return (loss_pos + loss_neg) / with_pos.sum().clamp(min=1)
 
 
+def _quick_val_maps(encoder, points_list, class_labels, part_dists=None,
+                    batch_size=8, n_per_class=20, k=5, part_iou_threshold=0.3):
+    """
+    Fast class-mAP@k and part-mAP@k on a subsampled test set.
+    Returns (class_mAP, part_mAP) — part_mAP is None if part_dists not provided.
+    """
+    unique_cls = np.unique(class_labels)
+    sample_ids = []
+    for c in unique_cls:
+        ids = np.where(class_labels == c)[0]
+        sample_ids.extend(ids[:n_per_class].tolist())
+    sample_ids = sorted(sample_ids)
+
+    encoder.eval()
+    all_enc = []
+    with torch.no_grad():
+        for i in range(0, len(sample_ids), batch_size):
+            chunk = sample_ids[i:i + batch_size]
+            pts = torch.from_numpy(
+                np.stack([points_list[j] for j in chunk], axis=0)
+            ).float().to(DEVICE)
+            if pts.shape[1] != 3:
+                pts = pts.permute(0, 2, 1)
+            z, _ = unpack_encoder_output(encoder(pts))
+            all_enc.append(z.cpu().numpy())
+    encoder.train()
+
+    embs = np.concatenate(all_enc, axis=0)            # (M, D)
+    embs = embs / (np.linalg.norm(embs, axis=1, keepdims=True) + 1e-8)
+    sub_labels = class_labels[sample_ids]
+    sub_dists  = part_dists[sample_ids] if part_dists is not None else None
+
+    class_aps, part_aps = [], []
+    for qid in range(len(sample_ids)):
+        sims = embs @ embs[qid]
+        sims[qid] = -np.inf
+        top_k = np.argpartition(sims, -k)[-k:]
+        top_k = top_k[np.argsort(sims[top_k])[::-1]]
+
+        rel_cls = (sub_labels[top_k] == sub_labels[qid]).astype(float)
+        if rel_cls.sum() == 0:
+            class_aps.append(0.0)
+        else:
+            pr = rel_cls.cumsum() / np.arange(1, len(rel_cls) + 1)
+            class_aps.append(float((pr * rel_cls).sum() / rel_cls.sum()))
+
+        if sub_dists is not None:
+            rel_part = np.array([
+                float((sub_labels[r] == sub_labels[qid]) and
+                      part_iou(sub_dists[qid], sub_dists[r]) >= part_iou_threshold)
+                for r in top_k
+            ])
+            if rel_part.sum() == 0:
+                part_aps.append(0.0)
+            else:
+                pr = rel_part.cumsum() / np.arange(1, len(rel_part) + 1)
+                part_aps.append(float((pr * rel_part).sum() / rel_part.sum()))
+
+    class_map = float(np.mean(class_aps))
+    part_map  = float(np.mean(part_aps)) if part_aps else None
+    return class_map, part_map
+
+
+def _quick_class_map(encoder, points_list, class_labels, batch_size=8, n_per_class=20, k=5):
+    class_map, _ = _quick_val_maps(encoder, points_list, class_labels,
+                                   batch_size=batch_size, n_per_class=n_per_class, k=k)
+    return class_map
+
+
 def quick_train_encoder(encoder, dataset_name: str,
                         epochs: int = 20, seed: int = 42,
                         loss: str = "proxy_anchor",
-                        batch_size: int = 16) -> None:
+                        batch_size: int = 16,
+                        val_points: list = None,
+                        val_labels: np.ndarray = None,
+                        val_part_dists: np.ndarray = None,
+                        val_part_iou_threshold: float = 0.3,
+                        val_every: int = 10,
+                        save_dir: str = None,
+                        train_points: list = None,
+                        train_labels: np.ndarray = None):
     """
     Train encoder with SO(3) augmentation.
 
@@ -702,6 +786,10 @@ def quick_train_encoder(encoder, dataset_name: str,
     loss='proxy_anchor'   : Proxy-Anchor metric learning loss (Kim et al. 2020)
                             Directly optimises embedding space for retrieval.
     batch_size            : reduce for large models (DiPVNet, RISA) to avoid OOM.
+    val_points            : list of (3, N) arrays for per-epoch validation
+    val_labels            : (M,) class label array matching val_points
+    val_every             : run validation every this many epochs (default: 10)
+    train_points/labels   : if provided, log train mAP@5 alongside val mAP@5
     """
     import torch.nn as nn, torch.optim as optim
     torch.manual_seed(seed)
@@ -712,6 +800,19 @@ def quick_train_encoder(encoder, dataset_name: str,
     except Exception as e:
         print(f"    [train] Cannot load {dataset_name}: {e} — skipping")
         return
+
+    # Build a small fixed train sample (20 per class) for overfitting detection
+    if train_points is None or train_labels is None:
+        _rng = np.random.default_rng(42)
+        _all_pts, _all_lbl = [], []
+        for i in range(len(ds)):
+            item = ds[i]
+            _all_pts.append(item[0].numpy() if isinstance(item[0], torch.Tensor) else item[0])
+            _all_lbl.append(int(item[1]))
+        _all_lbl_arr = np.array(_all_lbl)
+        _sample_idx = np.concatenate([_rng.choice(np.where(_all_lbl_arr == c)[0], size=min(20, ((_all_lbl_arr == c).sum())), replace=False) for c in np.unique(_all_lbl_arr)])
+        train_points = [_all_pts[i] for i in _sample_idx]
+        train_labels = _all_lbl_arr[_sample_idx]
 
     loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
     encoder.eval()
@@ -752,7 +853,15 @@ def quick_train_encoder(encoder, dataset_name: str,
     if head is not None:
         head.train()
 
+    tb_writer = None
+    if _TB_AVAILABLE:
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tb_writer = _TBWriter(log_dir=f"runs/{ts}_{encoder.__class__.__name__}")
+
     for ep in range(epochs):
+        ep_loss = 0.0
+        ep_batches = 0
         for batch in loader:
             pts = batch[0] if isinstance(batch, (tuple, list)) else batch
             lbl = batch[1] if isinstance(batch, (tuple, list)) else torch.zeros(pts.shape[0], dtype=torch.long)
@@ -766,14 +875,57 @@ def quick_train_encoder(encoder, dataset_name: str,
             opt.zero_grad()
             z, _ = unpack_encoder_output(encoder(pts))
             if loss == "proxy_anchor":
-                criterion(z, lbl).backward()
+                batch_loss = criterion(z, lbl)
             else:
-                criterion(head(z), lbl).backward()
+                batch_loss = criterion(head(z), lbl)
+            batch_loss.backward()
             opt.step()
-        print(f"    epoch {ep+1}/{epochs}", flush=True)
+            ep_loss += batch_loss.item()
+            ep_batches += 1
+        avg_loss = ep_loss / max(ep_batches, 1)
         scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+
+        do_val = (
+            val_points is not None
+            and val_labels is not None
+            and ((ep + 1) % val_every == 0 or ep == epochs - 1)
+        )
+        if do_val:
+            val_map, val_part_map = _quick_val_maps(
+                encoder, val_points, val_labels,
+                part_dists=val_part_dists,
+                batch_size=batch_size,
+                part_iou_threshold=val_part_iou_threshold,
+            )
+            msg = f"    epoch {ep+1}/{epochs}  loss={avg_loss:.4f}  val_class-mAP@5={val_map:.4f}"
+            if val_part_map is not None:
+                msg += f"  val_part-mAP@5={val_part_map:.4f}"
+            print(msg + f"  lr={current_lr:.2e}", flush=True)
+        else:
+            print(f"    epoch {ep+1}/{epochs}  loss={avg_loss:.4f}  lr={current_lr:.2e}", flush=True)
+
+        if tb_writer is not None:
+            tb_writer.add_scalar("train/loss", avg_loss, ep + 1)
+            tb_writer.add_scalar("train/lr", current_lr, ep + 1)
+            if do_val:
+                tb_writer.add_scalar("val/class_mAP@5", val_map, ep + 1)
+                if val_part_map is not None:
+                    tb_writer.add_scalar("val/part_mAP@5", val_part_map, ep + 1)
+                if train_points is not None and train_labels is not None:
+                    train_map, _ = _quick_val_maps(encoder, train_points, train_labels, batch_size=batch_size)
+                    tb_writer.add_scalar("train/class_mAP@5", train_map, ep + 1)
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        from datetime import datetime
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ckpt_path = os.path.join(save_dir, f"{ts}_{encoder.__class__.__name__}.pt")
+        torch.save(encoder.state_dict(), ckpt_path)
+        print(f"    Saved checkpoint → {ckpt_path}", flush=True)
 
     encoder.eval()
+    return tb_writer
     if head is not None:
         del head
     del opt, criterion, loader, ds
@@ -1042,6 +1194,13 @@ def run_experiment(args):
         )
         results_dict["part_mAP@5"] = round(sift_part_map, 4)
 
+    if _TB_AVAILABLE:
+        _tb = _TBWriter(log_dir="runs/exp8_3D-SIFT-InvIndex")
+        _tb.add_scalar("eval/class_mAP@5", results_dict["class_mAP@5"], 0)
+        if "part_mAP@5" in results_dict:
+            _tb.add_scalar("eval/part_mAP@5", results_dict["part_mAP@5"], 0)
+        _tb.close()
+
     print(f"\n{'='*60}")
     print(f"3D SIFT + Inverted Index  (vocab={args.vocab_size})")
     print(f"  class-mAP@5  = {results_dict['class_mAP@5']:.4f}")
@@ -1064,19 +1223,34 @@ def run_experiment(args):
     baseline_results = {}
     for model_name in args.models:
         print(f"\n{'='*60}\nGlobal embedding baseline: {model_name}  [{args.loss}]")
-        encoder = None
-        embeddings = None
+        tb_writer = None
         try:
             torch.cuda.empty_cache()
             encoder = _build_encoder(model_name).to(DEVICE)
-            quick_train_encoder(encoder, "shapenet",
+            if args.checkpoint:
+                ckpt = torch.load(args.checkpoint, map_location=DEVICE)
+                missing, unexpected = encoder.load_state_dict(ckpt, strict=False)
+                if missing or unexpected:
+                    print(f"  [checkpoint] missing={len(missing)} unexpected={len(unexpected)} keys")
+                else:
+                    print(f"  [checkpoint] Loaded {args.checkpoint}")
+            tb_writer = quick_train_encoder(encoder, "shapenet",
                                 epochs=args.epochs, seed=args.seed,
                                 loss=args.loss,
-                                batch_size=_BATCH_SIZE[model_name])
+                                batch_size=_BATCH_SIZE[model_name],
+                                val_points=points_list,
+                                val_labels=class_labels,
+                                val_part_dists=part_dists if part_labels_list is not None else None,
+                                val_part_iou_threshold=args.part_iou_threshold,
+                                val_every=args.val_every,
+                                save_dir=args.save_dir)
             embeddings = encode_all(encoder, points_list,
                                     batch_size=min(8, _BATCH_SIZE[model_name]))
         except Exception as e:
             print(f"  Error building/training {model_name}: {e} — skipping")
+            if tb_writer is not None:
+                tb_writer.close()
+                tb_writer = None
             continue
         finally:
             if encoder is not None:
@@ -1112,6 +1286,13 @@ def run_experiment(args):
         if g_part_map is not None:
             baseline_results[model_name]["part_mAP@5"] = round(g_part_map, 4)
             baseline_results[model_name]["part_profiles"] = g_profiles
+
+        if tb_writer is not None:
+            tb_writer.add_scalar("eval/class_mAP@5", g_class_map, args.epochs)
+            if g_part_map is not None:
+                tb_writer.add_scalar("eval/part_mAP@5", g_part_map, args.epochs)
+            tb_writer.close()
+            tb_writer = None
 
         print(f"  class-mAP@5 = {g_class_map:.4f}")
         if g_part_map is not None:
@@ -1189,13 +1370,20 @@ def main():
                         help="Training loss: 'classification' (cross-entropy) "
                              "or 'proxy_anchor' (metric learning, better for retrieval)")
     parser.add_argument("--epochs",  type=int, default=40)
+    parser.add_argument("--val_every", type=int, default=10,
+                        help="Run validation every N epochs during training (default: 10)")
     parser.add_argument("--seed",    type=int, default=42)
     # Cache
     parser.add_argument("--sift_cache", type=str,
                         default="outputs/exp8_sift_cache.npz",
                         help="Path to cache SIFT descriptors (.npz). "
                              "Loaded if exists, saved otherwise.")
+    # Transfer learning
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Path to a .pt checkpoint to load before training (transfer learning)")
     # Output
+    parser.add_argument("--save_dir", type=str, default="outputs/checkpoints",
+                        help="Directory to save model checkpoints after training")
     parser.add_argument("--out",  default="outputs/exp8_part_retrieval.json")
     args = parser.parse_args()
 

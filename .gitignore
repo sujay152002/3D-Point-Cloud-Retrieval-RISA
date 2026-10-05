@@ -1,7 +1,10 @@
 data/
 outputs/*.npz
+outputs/checkpoints/
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
 .env
+runs/
+logs/

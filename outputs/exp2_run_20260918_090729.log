@@ -1,0 +1,39 @@
+Device: cuda
+✓ Loaded ShapeNet test: 3370 samples (per-point labels: True)
+
+==================================================
+Model: PointNet++
+  Loaded checkpoint: outputs/checkpoints/20260916_152015_PointNet2Encoder.pt
+  Collecting encodings (8 classes × 5 shapes × 32 rotations)…
+Traceback (most recent call last):
+  File "/home/grad/smenon/retrieval_paper/experiments/exp2_semantic_collapse.py", line 310, in <module>
+    main()
+  File "/home/grad/smenon/retrieval_paper/experiments/exp2_semantic_collapse.py", line 284, in main
+    enc, lbl, _ = collect_encodings(
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/utils/_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/grad/smenon/retrieval_paper/experiments/exp2_semantic_collapse.py", line 176, in collect_encodings
+    enc, _ = unpack_encoder_output(encoder(rpt))
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/grad/smenon/retrieval_paper/models/pointnet2.py", line 279, in forward
+    x = self.fc(x)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/container.py", line 253, in forward
+    input = module(input)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1776, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1787, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/modules/batchnorm.py", line 194, in forward
+    return F.batch_norm(
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/functional.py", line 2841, in batch_norm
+    _verify_batch_size(input.size())
+  File "/users/grad/smenon/.local/lib/python3.10/site-packages/torch/nn/functional.py", line 2806, in _verify_batch_size
+    raise ValueError(
+ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 512])

@@ -314,12 +314,22 @@ class ProxyAnchorLoss(torch.nn.Module):
         return (loss_pos + loss_neg) / with_pos.sum().clamp(min=1)
 
 
-def build_risa(feat_dim: int = 256):
+def build_risa(feat_dim: int = 256, checkpoint_dir: str = None):
     from models import RotationInvariantSparseAttention
-    return RotationInvariantSparseAttention(
+    enc = RotationInvariantSparseAttention(
         encoding_out_dim=512, features_out_dim=feat_dim,
         model_dim=feat_dim, num_blocks=4,
     )
+    if checkpoint_dir:
+        import glob
+        pattern = str(Path(checkpoint_dir) / "*_RotationInvariantSparseAttention.pt")
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            enc.load_state_dict(torch.load(matches[-1], map_location="cpu"))
+            print(f"  Loaded RISA checkpoint: {matches[-1]}")
+        else:
+            print(f"  WARNING: no RISA checkpoint found in {checkpoint_dir}")
+    return enc
 
 
 def train_risa(encoder, epochs: int = 40, seed: int = 42, batch_size: int = 4) -> None:
@@ -525,9 +535,11 @@ def run_experiment(args):
     # ══════════════════════════════════════════════════════════════════════════
     # Train RISA (shared for Methods B and C)
     # ══════════════════════════════════════════════════════════════════════════
-    print(f"\n{'='*60}\nTraining RISA (feat_dim={args.feat_dim}, epochs={args.epochs})...")
-    encoder = build_risa(feat_dim=args.feat_dim).to(DEVICE)
-    train_risa(encoder, epochs=args.epochs, seed=args.seed)
+    print(f"\n{'='*60}\nLoading RISA (feat_dim={args.feat_dim})...")
+    encoder = build_risa(feat_dim=args.feat_dim, checkpoint_dir=args.checkpoint_dir).to(DEVICE)
+    if not args.checkpoint_dir:
+        print(f"Training RISA for {args.epochs} epochs...")
+        train_risa(encoder, epochs=args.epochs, seed=args.seed)
 
     # ══════════════════════════════════════════════════════════════════════════
     # Method B — RISA-InvIndex (RISA per-point features as descriptors)
@@ -637,6 +649,8 @@ def main():
     parser.add_argument("--sift_cache",          type=str,
                         default="outputs/exp8_sift_cache.npz",
                         help="Reuse exp8 FPFH cache if available")
+    parser.add_argument("--checkpoint_dir", type=str, default=None,
+                        help="Load saved RISA checkpoint instead of training")
     parser.add_argument("--out",                 type=str,
                         default="outputs/exp9_risa_sift.json")
     args = parser.parse_args()

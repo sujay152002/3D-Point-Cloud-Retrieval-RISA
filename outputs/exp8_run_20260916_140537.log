@@ -1,0 +1,732 @@
+Device: cuda
+Loading ShapeNet test set (1024 pts per shape)...
+✓ Loaded ShapeNet test: 3370 samples (per-point labels: True)
+Extracting shapes...
+  3370 test shapes, 16 classes
+Computing part distributions...
+
+Loading 3D SIFT descriptors from cache: outputs/exp8_sift_cache.npz
+  Loaded 3370 shapes from cache.
+  Total descriptors: 215,680
+
+Building inverted index (vocab_size=512)...
+  Building vocabulary: 512 words from 215,680 descriptors...
+  Vocabulary ready.
+  Indexed 3370 shapes.
+
+Discovering attribute words from part labels...
+  Attribute words for 'body' in 'airplane': [94, 239, 346, 347, 363, 439, 458, 317, 78, 299]... (showing 10/30)
+  Attribute words for 'wing' in 'airplane': [224, 267, 0, 124, 210, 494, 319, 322, 429, 129]... (showing 10/30)
+  Attribute words for 'tail' in 'airplane': [331, 273, 469, 498, 82, 98, 137, 185, 236, 404]... (showing 10/30)
+  Attribute words for 'engine' in 'airplane': [413, 123, 15, 59, 491, 502, 100, 315, 490, 271]... (showing 10/30)
+  Attribute words for 'body' in 'bag': [247, 271, 26, 262, 297, 384, 78, 79, 122, 136]... (showing 10/30)
+  Attribute words for 'handle' in 'bag': [94, 261, 204, 260, 151, 488, 50, 84, 344, 68]... (showing 10/30)
+  Attribute words for 'brim' in 'cap': [155, 484, 248, 214, 50, 106, 204, 240, 261, 417]... (showing 10/30)
+  Attribute words for 'crown' in 'cap': [162, 274, 284, 377, 17, 69, 73, 255, 395, 441]... (showing 10/30)
+  Attribute words for 'body' in 'car': [208, 398, 108, 368, 330, 466, 438, 298, 435, 87]... (showing 10/30)
+  Attribute words for 'wheel' in 'car': [117, 137, 430, 458, 7, 205, 485, 63, 147, 384]... (showing 10/30)
+  Attribute words for 'hood' in 'car': [252, 88, 157, 401, 48, 78, 150, 373, 16, 254]... (showing 10/30)
+  Attribute words for 'roof' in 'car': [346, 198, 249, 197, 359, 17, 218, 207, 340, 143]... (showing 10/30)
+  Attribute words for 'back' in 'chair': [503, 226, 81, 170, 365, 32, 91, 432, 404, 349]... (showing 10/30)
+  Attribute words for 'seat' in 'chair': [327, 376, 194, 2, 403, 409, 68, 43, 375, 229]... (showing 10/30)
+  Attribute words for 'leg' in 'chair': [412, 308, 382, 185, 366, 453, 54, 357, 283, 436]... (showing 10/30)
+  Attribute words for 'arm' in 'chair': [463, 397, 257, 316, 499, 22, 211, 216, 103, 285]... (showing 10/30)
+  Attribute words for 'earcup' in 'earphone': [21, 214, 248, 321, 381, 484, 225, 261, 407, 425]... (showing 10/30)
+  Attribute words for 'headband' in 'earphone': [33, 32, 297, 103, 140, 163, 242, 310, 325, 378]... (showing 10/30)
+  Attribute words for 'data_cord' in 'earphone': [293, 301, 417, 473, 14, 15, 121, 176, 250, 257]... (showing 10/30)
+  Attribute words for 'head' in 'guitar': [152, 276, 490, 389, 251, 352, 411, 468, 107, 154]... (showing 10/30)
+  Attribute words for 'neck' in 'guitar': [23, 175, 208, 61, 92, 108, 148, 511, 69, 72]... (showing 10/30)
+  Attribute words for 'body' in 'guitar': [151, 6, 260, 261, 304, 414, 155, 391, 465, 76]... (showing 10/30)
+  Attribute words for 'blade' in 'knife': [314, 199, 441, 92, 148, 215, 364, 89, 160, 171]... (showing 10/30)
+  Attribute words for 'handle' in 'knife': [376, 24, 80, 194, 486, 354, 155, 327, 414, 208]... (showing 10/30)
+  Attribute words for 'base' in 'lamp': [59, 491, 75, 46, 389, 372, 9, 138, 315, 149]... (showing 10/30)
+  Attribute words for 'shade' in 'lamp': [17, 399, 490, 7, 185, 280, 329, 365, 289, 237]... (showing 10/30)
+  Attribute words for 'tube' in 'lamp': [82, 123, 431, 137, 352, 177, 459, 28, 331, 273]... (showing 10/30)
+  Attribute words for 'bulb' in 'lamp': [205, 469, 23, 61, 383, 430, 422, 356, 100, 10]... (showing 10/30)
+  Attribute words for 'lid' in 'laptop': [267, 353, 311, 332, 23, 71, 202, 313, 415, 474]... (showing 10/30)
+  Attribute words for 'base' in 'laptop': [447, 329, 128, 160, 326, 400, 432, 12, 234, 333]... (showing 10/30)
+  Attribute words for 'gas_tank' in 'motorbike': [14, 298, 371, 227, 182, 245, 109, 372, 353, 387]... (showing 10/30)
+  Attribute words for 'seat' in 'motorbike': [493, 103, 499, 191, 400, 312, 319, 328, 97, 174]... (showing 10/30)
+  Attribute words for 'wheel' in 'motorbike': [443, 0, 91, 105, 220, 416, 300, 132, 337, 18]... (showing 10/30)
+  Attribute words for 'handle' in 'motorbike': [59, 154, 185, 490, 275, 496, 16, 34, 82, 184]... (showing 10/30)
+  Attribute words for 'light' in 'motorbike': [387, 157, 221, 15, 78, 210, 459, 132, 236, 370]... (showing 10/30)
+  Attribute words for 'engine' in 'motorbike': [180, 336, 104, 131, 213, 435, 464, 200, 118, 279]... (showing 10/30)
+  Attribute words for 'body' in 'mug': [311, 474, 313, 61, 208, 506, 3, 126, 158, 165]... (showing 10/30)
+  Attribute words for 'handle' in 'mug': [400, 223, 456, 151, 204, 145, 94, 180, 464, 484]... (showing 10/30)
+  Attribute words for 'barrel' in 'pistol': [132, 470, 272, 455, 174, 431, 97, 275, 340, 26]... (showing 10/30)
+  Attribute words for 'handle' in 'pistol': [119, 290, 437, 344, 414, 203, 466, 8, 84, 323]... (showing 10/30)
+  Attribute words for 'trigger_guard' in 'pistol': [216, 267, 311, 88, 480, 122, 137, 152, 286, 288]... (showing 10/30)
+  Attribute words for 'nose' in 'rocket': [86, 167, 180, 182, 213, 299, 109, 112, 131, 321]... (showing 10/30)
+  Attribute words for 'body' in 'rocket': [55, 92, 144, 359, 388, 29, 171, 294, 88, 138]... (showing 10/30)
+  Attribute words for 'fin' in 'rocket': [356, 346, 72, 343, 502, 132, 402, 458, 426, 62]... (showing 10/30)
+  Attribute words for 'deck' in 'skateboard': [157, 78, 123, 47, 440, 13, 331, 426, 50, 315]... (showing 10/30)
+  Attribute words for 'wheel' in 'skateboard': [312, 174, 162, 211, 272, 67, 195, 201, 497, 242]... (showing 10/30)
+  Attribute words for 'truck' in 'skateboard': [27, 415, 474, 210, 506, 102, 236, 338, 363, 487]... (showing 10/30)
+  Attribute words for 'top' in 'table': [279, 367, 358, 204, 317, 417, 6, 261, 146, 479]... (showing 10/30)
+  Attribute words for 'leg' in 'table': [72, 502, 70, 356, 95, 224, 124, 154, 476, 177]... (showing 10/30)
+  Attribute words for 'support' in 'table': [465, 43, 228, 386, 119, 507, 403, 287, 460, 131]... (showing 10/30)
+
+Attribute query: 'airplane/wing'
+  Top-10 results (shape_id, score):
+    shape  1460  class=lamp          score=2.0068
+    shape  1022  class=lamp          score=1.6998
+    shape  1937  class=lamp          score=1.6105
+    shape   472  class=chair         score=1.5706
+    shape  2268  class=lamp          score=1.4843
+    shape  2676  class=lamp          score=1.4614
+    shape  2187  class=lamp          score=1.4311
+    shape   102  class=chair         score=1.4020
+    shape  1349  class=lamp          score=1.3968
+    shape  3075  class=lamp          score=1.3682
+
+Evaluating retrieval (n_queries_per_class=50)...
+  620 total queries
+
+============================================================
+3D SIFT + Inverted Index  (vocab=512)
+  class-mAP@5  = 0.3102
+  part-mAP@5   = 0.3089  (IoU threshold=0.3)
+  Sample query part profiles (first 3 queries):
+    query 0 (chair)  AP=0.2000
+      query parts: back=0.92, seat=0.92, arm=0.91, leg=0.44
+      result 1: shape 2739  iou=0.00  rel=False  [wing=0.98, tail=0.98, engine=0.96, body=0.86]
+      result 2: shape 2265  iou=0.00  rel=False  [top=1.00, support=0.98, leg=0.87, body=0.00]
+      result 3: shape 52  iou=0.00  rel=False  [top=1.00, support=0.98, leg=0.88, body=0.00]
+    query 1 (airplane)  AP=0.0000
+      query parts: wing=0.95, tail=0.95, engine=0.92, body=0.83
+      result 1: shape 2887  iou=0.00  rel=False  [top=0.99, support=0.98, leg=0.87, body=0.00]
+      result 2: shape 1473  iou=0.00  rel=False  [top=0.92, support=0.88, leg=0.81, body=0.00]
+      result 3: shape 549  iou=0.00  rel=False  [lid=0.99, base=0.53, body=0.00, wing=0.00]
+    query 2 (lamp)  AP=0.6792
+      query parts: bulb=0.84, shade=0.84, base=0.74, tube=0.74
+      result 1: shape 585  iou=0.00  rel=False  [back=0.99, seat=0.98, arm=0.96, leg=0.47]
+      result 2: shape 474  iou=1.00  rel=True  [shade=0.91, bulb=0.90, tube=0.85, base=0.76]
+      result 3: shape 986  iou=0.67  rel=True  [bulb=0.73, shade=0.71, base=0.69, tube=0.44]
+
+============================================================
+Global embedding baseline: PointNet++  [proxy_anchor]
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100  loss=8.4887  lr=1.00e-04
+    epoch 2/100  loss=7.1160  lr=9.99e-05
+    epoch 3/100  loss=6.2344  lr=9.98e-05
+    epoch 4/100  loss=5.4722  lr=9.96e-05
+    epoch 5/100  loss=4.6418  lr=9.94e-05
+    epoch 6/100  loss=4.0807  lr=9.91e-05
+    epoch 7/100  loss=3.6207  lr=9.88e-05
+    epoch 8/100  loss=3.4120  lr=9.84e-05
+    epoch 9/100  loss=3.1748  lr=9.80e-05
+    epoch 10/100  loss=2.9042  val_class-mAP@5=0.8471  val_part-mAP@5=0.8411  lr=9.76e-05
+    epoch 11/100  loss=2.7837  lr=9.71e-05
+    epoch 12/100  loss=2.6044  lr=9.65e-05
+    epoch 13/100  loss=2.4888  lr=9.59e-05
+    epoch 14/100  loss=2.4208  lr=9.53e-05
+    epoch 15/100  loss=2.3531  lr=9.46e-05
+    epoch 16/100  loss=2.2850  lr=9.39e-05
+    epoch 17/100  loss=2.1877  lr=9.31e-05
+    epoch 18/100  loss=2.1466  lr=9.23e-05
+    epoch 19/100  loss=2.0680  lr=9.14e-05
+    epoch 20/100  loss=2.0950  val_class-mAP@5=0.8478  val_part-mAP@5=0.8442  lr=9.05e-05
+    epoch 21/100  loss=1.9849  lr=8.96e-05
+    epoch 22/100  loss=1.9094  lr=8.86e-05
+    epoch 23/100  loss=1.8974  lr=8.76e-05
+    epoch 24/100  loss=1.9104  lr=8.66e-05
+    epoch 25/100  loss=1.8011  lr=8.55e-05
+    epoch 26/100  loss=1.7988  lr=8.44e-05
+    epoch 27/100  loss=1.7355  lr=8.32e-05
+    epoch 28/100  loss=1.8314  lr=8.21e-05
+    epoch 29/100  loss=1.6463  lr=8.08e-05
+    epoch 30/100  loss=1.6520  val_class-mAP@5=0.8616  val_part-mAP@5=0.8591  lr=7.96e-05
+    epoch 31/100  loss=1.5622  lr=7.83e-05
+    epoch 32/100  loss=1.5831  lr=7.70e-05
+    epoch 33/100  loss=1.5902  lr=7.57e-05
+    epoch 34/100  loss=1.4900  lr=7.43e-05
+    epoch 35/100  loss=1.4342  lr=7.30e-05
+    epoch 36/100  loss=1.3429  lr=7.16e-05
+    epoch 37/100  loss=1.3491  lr=7.02e-05
+    epoch 38/100  loss=1.2984  lr=6.87e-05
+    epoch 39/100  loss=1.3793  lr=6.73e-05
+    epoch 40/100  loss=1.2615  val_class-mAP@5=0.8639  val_part-mAP@5=0.8606  lr=6.58e-05
+    epoch 41/100  loss=1.2903  lr=6.43e-05
+    epoch 42/100  loss=1.2692  lr=6.28e-05
+    epoch 43/100  loss=1.2893  lr=6.13e-05
+    epoch 44/100  loss=1.1808  lr=5.98e-05
+    epoch 45/100  loss=1.1859  lr=5.82e-05
+    epoch 46/100  loss=1.2748  lr=5.67e-05
+    epoch 47/100  loss=1.1604  lr=5.52e-05
+    epoch 48/100  loss=1.1144  lr=5.36e-05
+    epoch 49/100  loss=1.1078  lr=5.21e-05
+    epoch 50/100  loss=1.1448  val_class-mAP@5=0.8670  val_part-mAP@5=0.8645  lr=5.05e-05
+    epoch 51/100  loss=1.1033  lr=4.89e-05
+    epoch 52/100  loss=1.0423  lr=4.74e-05
+    epoch 53/100  loss=0.9710  lr=4.58e-05
+    epoch 54/100  loss=1.0481  lr=4.43e-05
+    epoch 55/100  loss=1.0333  lr=4.28e-05
+    epoch 56/100  loss=0.9612  lr=4.12e-05
+    epoch 57/100  loss=0.9739  lr=3.97e-05
+    epoch 58/100  loss=0.9618  lr=3.82e-05
+    epoch 59/100  loss=1.0004  lr=3.67e-05
+    epoch 60/100  loss=0.9377  val_class-mAP@5=0.8571  val_part-mAP@5=0.8553  lr=3.52e-05
+    epoch 61/100  loss=0.9356  lr=3.37e-05
+    epoch 62/100  loss=0.8699  lr=3.23e-05
+    epoch 63/100  loss=0.8405  lr=3.08e-05
+    epoch 64/100  loss=0.8651  lr=2.94e-05
+    epoch 65/100  loss=0.8450  lr=2.80e-05
+    epoch 66/100  loss=0.8223  lr=2.67e-05
+    epoch 67/100  loss=0.8429  lr=2.53e-05
+    epoch 68/100  loss=0.8146  lr=2.40e-05
+    epoch 69/100  loss=0.7532  lr=2.27e-05
+    epoch 70/100  loss=0.7548  val_class-mAP@5=0.8662  val_part-mAP@5=0.8647  lr=2.14e-05
+    epoch 71/100  loss=0.8093  lr=2.02e-05
+    epoch 72/100  loss=0.7780  lr=1.89e-05
+    epoch 73/100  loss=0.7542  lr=1.78e-05
+    epoch 74/100  loss=0.7925  lr=1.66e-05
+    epoch 75/100  loss=0.7467  lr=1.55e-05
+    epoch 76/100  loss=0.7228  lr=1.44e-05
+    epoch 77/100  loss=0.7717  lr=1.34e-05
+    epoch 78/100  loss=0.7444  lr=1.24e-05
+    epoch 79/100  loss=0.7039  lr=1.14e-05
+    epoch 80/100  loss=0.7393  val_class-mAP@5=0.8602  val_part-mAP@5=0.8583  lr=1.05e-05
+    epoch 81/100  loss=0.6982  lr=9.56e-06
+    epoch 82/100  loss=0.6649  lr=8.71e-06
+    epoch 83/100  loss=0.6660  lr=7.89e-06
+    epoch 84/100  loss=0.6830  lr=7.12e-06
+    epoch 85/100  loss=0.6520  lr=6.40e-06
+    epoch 86/100  loss=0.6770  lr=5.71e-06
+    epoch 87/100  loss=0.6928  lr=5.07e-06
+    epoch 88/100  loss=0.6105  lr=4.48e-06
+    epoch 89/100  loss=0.6853  lr=3.93e-06
+    epoch 90/100  loss=0.6467  val_class-mAP@5=0.8375  val_part-mAP@5=0.8351  lr=3.42e-06
+    epoch 91/100  loss=0.6792  lr=2.97e-06
+    epoch 92/100  loss=0.6795  lr=2.56e-06
+    epoch 93/100  loss=0.5680  lr=2.19e-06
+    epoch 94/100  loss=0.6492  lr=1.88e-06
+    epoch 95/100  loss=0.6102  lr=1.61e-06
+    epoch 96/100  loss=0.6304  lr=1.39e-06
+    epoch 97/100  loss=0.6493  lr=1.22e-06
+    epoch 98/100  loss=0.6405  lr=1.10e-06
+    epoch 99/100  loss=0.5854  lr=1.02e-06
+    epoch 100/100  loss=0.6163  val_class-mAP@5=0.8416  val_part-mAP@5=0.8400  lr=1.00e-06
+    Saved checkpoint → outputs/checkpoints/20260916_152015_PointNet2Encoder.pt
+  class-mAP@5 = 0.8633
+  part-mAP@5  = 0.8625
+  Sample query part profiles (first 3 queries):
+    query 0 (chair)  AP=1.0000
+      query parts: back=0.92, seat=0.92, arm=0.91, leg=0.44
+      result 1: shape 1946  iou=1.00  rel=True  [arm=0.99, back=0.96, seat=0.96, leg=0.46]
+      result 2: shape 1065  iou=1.00  rel=True  [arm=0.95, back=0.94, seat=0.94, leg=0.45]
+      result 3: shape 1295  iou=1.00  rel=True  [back=0.94, seat=0.93, arm=0.93, leg=0.45]
+    query 1 (airplane)  AP=1.0000
+      query parts: wing=0.95, tail=0.95, engine=0.92, body=0.83
+      result 1: shape 2394  iou=0.67  rel=True  [tail=0.96, wing=0.96, engine=0.94, body=0.84]
+      result 2: shape 1863  iou=0.67  rel=True  [tail=0.95, wing=0.95, engine=0.93, body=0.83]
+      result 3: shape 653  iou=0.67  rel=True  [tail=0.91, wing=0.91, engine=0.90, body=0.80]
+    query 2 (lamp)  AP=1.0000
+      query parts: bulb=0.84, shade=0.84, base=0.74, tube=0.74
+      result 1: shape 1315  iou=0.50  rel=True  [tube=1.00, shade=0.93, bulb=0.92, base=0.69]
+      result 2: shape 2247  iou=0.50  rel=True  [tube=1.00, shade=0.94, bulb=0.93, base=0.70]
+      result 3: shape 1227  iou=0.50  rel=True  [tube=1.00, shade=0.93, bulb=0.92, base=0.69]
+
+============================================================
+Global embedding baseline: DGCNN  [proxy_anchor]
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100  loss=7.2557  lr=1.00e-04
+    epoch 2/100  loss=5.8543  lr=9.99e-05
+    epoch 3/100  loss=5.3305  lr=9.98e-05
+    epoch 4/100  loss=4.8776  lr=9.96e-05
+    epoch 5/100  loss=4.5143  lr=9.94e-05
+    epoch 6/100  loss=4.2387  lr=9.91e-05
+    epoch 7/100  loss=3.9498  lr=9.88e-05
+    epoch 8/100  loss=3.7870  lr=9.84e-05
+    epoch 9/100  loss=3.7231  lr=9.80e-05
+    epoch 10/100  loss=3.5681  val_class-mAP@5=0.8412  val_part-mAP@5=0.8380  lr=9.76e-05
+    epoch 11/100  loss=3.3846  lr=9.71e-05
+    epoch 12/100  loss=3.2991  lr=9.65e-05
+    epoch 13/100  loss=3.2180  lr=9.59e-05
+    epoch 14/100  loss=3.0698  lr=9.53e-05
+    epoch 15/100  loss=2.9768  lr=9.46e-05
+    epoch 16/100  loss=2.8757  lr=9.39e-05
+    epoch 17/100  loss=2.7531  lr=9.31e-05
+    epoch 18/100  loss=2.7552  lr=9.23e-05
+    epoch 19/100  loss=2.7405  lr=9.14e-05
+    epoch 20/100  loss=2.6969  val_class-mAP@5=0.8348  val_part-mAP@5=0.8295  lr=9.05e-05
+    epoch 21/100  loss=2.6629  lr=8.96e-05
+    epoch 22/100  loss=2.5545  lr=8.86e-05
+    epoch 23/100  loss=2.4845  lr=8.76e-05
+    epoch 24/100  loss=2.3699  lr=8.66e-05
+    epoch 25/100  loss=2.3335  lr=8.55e-05
+    epoch 26/100  loss=2.3818  lr=8.44e-05
+    epoch 27/100  loss=2.2974  lr=8.32e-05
+    epoch 28/100  loss=2.2724  lr=8.21e-05
+    epoch 29/100  loss=2.1926  lr=8.08e-05
+    epoch 30/100  loss=2.1808  val_class-mAP@5=0.8340  val_part-mAP@5=0.8313  lr=7.96e-05
+    epoch 31/100  loss=2.0825  lr=7.83e-05
+    epoch 32/100  loss=2.0271  lr=7.70e-05
+    epoch 33/100  loss=1.9836  lr=7.57e-05
+    epoch 34/100  loss=1.9526  lr=7.43e-05
+    epoch 35/100  loss=2.0352  lr=7.30e-05
+    epoch 36/100  loss=1.8975  lr=7.16e-05
+    epoch 37/100  loss=1.8964  lr=7.02e-05
+    epoch 38/100  loss=1.8745  lr=6.87e-05
+    epoch 39/100  loss=1.8239  lr=6.73e-05
+    epoch 40/100  loss=1.8441  val_class-mAP@5=0.8364  val_part-mAP@5=0.8306  lr=6.58e-05
+    epoch 41/100  loss=1.7525  lr=6.43e-05
+    epoch 42/100  loss=1.7344  lr=6.28e-05
+    epoch 43/100  loss=1.6298  lr=6.13e-05
+    epoch 44/100  loss=1.7349  lr=5.98e-05
+    epoch 45/100  loss=1.5981  lr=5.82e-05
+    epoch 46/100  loss=1.6570  lr=5.67e-05
+    epoch 47/100  loss=1.5598  lr=5.52e-05
+    epoch 48/100  loss=1.5949  lr=5.36e-05
+    epoch 49/100  loss=1.4994  lr=5.21e-05
+    epoch 50/100  loss=1.5609  val_class-mAP@5=0.8502  val_part-mAP@5=0.8451  lr=5.05e-05
+    epoch 51/100  loss=1.4946  lr=4.89e-05
+    epoch 52/100  loss=1.4527  lr=4.74e-05
+    epoch 53/100  loss=1.4361  lr=4.58e-05
+    epoch 54/100  loss=1.3773  lr=4.43e-05
+    epoch 55/100  loss=1.3979  lr=4.28e-05
+    epoch 56/100  loss=1.3709  lr=4.12e-05
+    epoch 57/100  loss=1.3746  lr=3.97e-05
+    epoch 58/100  loss=1.3775  lr=3.82e-05
+    epoch 59/100  loss=1.2947  lr=3.67e-05
+    epoch 60/100  loss=1.2559  val_class-mAP@5=0.8376  val_part-mAP@5=0.8358  lr=3.52e-05
+    epoch 61/100  loss=1.2729  lr=3.37e-05
+    epoch 62/100  loss=1.2916  lr=3.23e-05
+    epoch 63/100  loss=1.2389  lr=3.08e-05
+    epoch 64/100  loss=1.2033  lr=2.94e-05
+    epoch 65/100  loss=1.2179  lr=2.80e-05
+    epoch 66/100  loss=1.1904  lr=2.67e-05
+    epoch 67/100  loss=1.1687  lr=2.53e-05
+    epoch 68/100  loss=1.0986  lr=2.40e-05
+    epoch 69/100  loss=1.1498  lr=2.27e-05
+    epoch 70/100  loss=1.0917  val_class-mAP@5=0.8520  val_part-mAP@5=0.8463  lr=2.14e-05
+    epoch 71/100  loss=1.1215  lr=2.02e-05
+    epoch 72/100  loss=1.1235  lr=1.89e-05
+    epoch 73/100  loss=1.0534  lr=1.78e-05
+    epoch 74/100  loss=1.0926  lr=1.66e-05
+    epoch 75/100  loss=1.0169  lr=1.55e-05
+    epoch 76/100  loss=0.9670  lr=1.44e-05
+    epoch 77/100  loss=1.0386  lr=1.34e-05
+    epoch 78/100  loss=0.9905  lr=1.24e-05
+    epoch 79/100  loss=0.9767  lr=1.14e-05
+    epoch 80/100  loss=0.9907  val_class-mAP@5=0.8547  val_part-mAP@5=0.8491  lr=1.05e-05
+    epoch 81/100  loss=0.9596  lr=9.56e-06
+    epoch 82/100  loss=0.9210  lr=8.71e-06
+    epoch 83/100  loss=0.9508  lr=7.89e-06
+    epoch 84/100  loss=0.8956  lr=7.12e-06
+    epoch 85/100  loss=0.9558  lr=6.40e-06
+    epoch 86/100  loss=0.8877  lr=5.71e-06
+    epoch 87/100  loss=0.9313  lr=5.07e-06
+    epoch 88/100  loss=0.8964  lr=4.48e-06
+    epoch 89/100  loss=0.9149  lr=3.93e-06
+    epoch 90/100  loss=0.9115  val_class-mAP@5=0.8553  val_part-mAP@5=0.8496  lr=3.42e-06
+    epoch 91/100  loss=0.8928  lr=2.97e-06
+    epoch 92/100  loss=0.8669  lr=2.56e-06
+    epoch 93/100  loss=0.8813  lr=2.19e-06
+    epoch 94/100  loss=0.8856  lr=1.88e-06
+    epoch 95/100  loss=0.8694  lr=1.61e-06
+    epoch 96/100  loss=0.8629  lr=1.39e-06
+    epoch 97/100  loss=0.8591  lr=1.22e-06
+    epoch 98/100  loss=0.8347  lr=1.10e-06
+    epoch 99/100  loss=0.8448  lr=1.02e-06
+    epoch 100/100  loss=0.8539  val_class-mAP@5=0.8623  val_part-mAP@5=0.8579  lr=1.00e-06
+    Saved checkpoint → outputs/checkpoints/20260916_172316_DGCNNEncoder.pt
+  class-mAP@5 = 0.8966
+  part-mAP@5  = 0.8947
+  Sample query part profiles (first 3 queries):
+    query 0 (chair)  AP=1.0000
+      query parts: back=0.92, seat=0.92, arm=0.91, leg=0.44
+      result 1: shape 3315  iou=0.75  rel=True  [back=0.96, seat=0.95, arm=0.91, leg=0.46]
+      result 2: shape 2339  iou=0.75  rel=True  [back=0.97, seat=0.97, arm=0.94, leg=0.47]
+      result 3: shape 357  iou=0.75  rel=True  [back=0.97, seat=0.97, arm=0.94, leg=0.47]
+    query 1 (airplane)  AP=1.0000
+      query parts: wing=0.95, tail=0.95, engine=0.92, body=0.83
+      result 1: shape 589  iou=0.67  rel=True  [wing=0.98, tail=0.98, engine=0.96, body=0.86]
+      result 2: shape 2394  iou=0.67  rel=True  [tail=0.96, wing=0.96, engine=0.94, body=0.84]
+      result 3: shape 771  iou=0.67  rel=True  [tail=0.98, wing=0.98, engine=0.96, body=0.86]
+    query 2 (lamp)  AP=0.0000
+      query parts: bulb=0.84, shade=0.84, base=0.74, tube=0.74
+      result 1: shape 23  iou=0.00  rel=False  [back=0.91, seat=0.91, arm=0.90, leg=0.44]
+      result 2: shape 3106  iou=0.00  rel=False  [arm=0.98, back=0.95, seat=0.95, leg=0.46]
+      result 3: shape 2465  iou=0.00  rel=False  [back=0.79, seat=0.79, arm=0.73, leg=0.38]
+
+============================================================
+Global embedding baseline: DiPVNet  [proxy_anchor]
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100  loss=5.7960  lr=1.00e-04
+    epoch 2/100  loss=3.7580  lr=9.99e-05
+    epoch 3/100  loss=2.9467  lr=9.98e-05
+    epoch 4/100  loss=2.6119  lr=9.96e-05
+    epoch 5/100  loss=2.3104  lr=9.94e-05
+    epoch 6/100  loss=2.2202  lr=9.91e-05
+    epoch 7/100  loss=2.0604  lr=9.88e-05
+    epoch 8/100  loss=1.9779  lr=9.84e-05
+    epoch 9/100  loss=1.8712  lr=9.80e-05
+    epoch 10/100  loss=1.8231  val_class-mAP@5=0.7833  val_part-mAP@5=0.7796  lr=9.76e-05
+    epoch 11/100  loss=1.7413  lr=9.71e-05
+    epoch 12/100  loss=1.6985  lr=9.65e-05
+    epoch 13/100  loss=1.6398  lr=9.59e-05
+    epoch 14/100  loss=1.6607  lr=9.53e-05
+    epoch 15/100  loss=1.6081  lr=9.46e-05
+    epoch 16/100  loss=1.4983  lr=9.39e-05
+    epoch 17/100  loss=1.4495  lr=9.31e-05
+    epoch 18/100  loss=1.4312  lr=9.23e-05
+    epoch 19/100  loss=1.3581  lr=9.14e-05
+    epoch 20/100  loss=1.5417  val_class-mAP@5=0.7774  val_part-mAP@5=0.7762  lr=9.05e-05
+    epoch 21/100  loss=1.4014  lr=8.96e-05
+    epoch 22/100  loss=1.3427  lr=8.86e-05
+    epoch 23/100  loss=1.3605  lr=8.76e-05
+    epoch 24/100  loss=1.2967  lr=8.66e-05
+    epoch 25/100  loss=1.3169  lr=8.55e-05
+    epoch 26/100  loss=1.3022  lr=8.44e-05
+    epoch 27/100  loss=1.2626  lr=8.32e-05
+    epoch 28/100  loss=1.2732  lr=8.21e-05
+    epoch 29/100  loss=1.2656  lr=8.08e-05
+    epoch 30/100  loss=1.2425  val_class-mAP@5=0.8064  val_part-mAP@5=0.8036  lr=7.96e-05
+    epoch 31/100  loss=1.2222  lr=7.83e-05
+    epoch 32/100  loss=1.1584  lr=7.70e-05
+    epoch 33/100  loss=1.2146  lr=7.57e-05
+    epoch 34/100  loss=1.1116  lr=7.43e-05
+    epoch 35/100  loss=1.2098  lr=7.30e-05
+    epoch 36/100  loss=1.1227  lr=7.16e-05
+    epoch 37/100  loss=1.1292  lr=7.02e-05
+    epoch 38/100  loss=1.0551  lr=6.87e-05
+    epoch 39/100  loss=1.0882  lr=6.73e-05
+    epoch 40/100  loss=1.0511  val_class-mAP@5=0.8230  val_part-mAP@5=0.8217  lr=6.58e-05
+    epoch 41/100  loss=0.9905  lr=6.43e-05
+    epoch 42/100  loss=1.0589  lr=6.28e-05
+    epoch 43/100  loss=0.9414  lr=6.13e-05
+    epoch 44/100  loss=1.0431  lr=5.98e-05
+    epoch 45/100  loss=0.9721  lr=5.82e-05
+    epoch 46/100  loss=0.9231  lr=5.67e-05
+    epoch 47/100  loss=0.9276  lr=5.52e-05
+    epoch 48/100  loss=1.0406  lr=5.36e-05
+    epoch 49/100  loss=1.2438  lr=5.21e-05
+    epoch 50/100  loss=1.1115  val_class-mAP@5=0.8227  val_part-mAP@5=0.8212  lr=5.05e-05
+    epoch 51/100  loss=1.0438  lr=4.89e-05
+    epoch 52/100  loss=1.1162  lr=4.74e-05
+    epoch 53/100  loss=1.0305  lr=4.58e-05
+    epoch 54/100  loss=1.0087  lr=4.43e-05
+    epoch 55/100  loss=0.9764  lr=4.28e-05
+    epoch 56/100  loss=1.0036  lr=4.12e-05
+    epoch 57/100  loss=0.9713  lr=3.97e-05
+    epoch 58/100  loss=0.8829  lr=3.82e-05
+    epoch 59/100  loss=0.9097  lr=3.67e-05
+    epoch 60/100  loss=0.9402  val_class-mAP@5=0.8396  val_part-mAP@5=0.8379  lr=3.52e-05
+    epoch 61/100  loss=0.9151  lr=3.37e-05
+    epoch 62/100  loss=0.8961  lr=3.23e-05
+    epoch 63/100  loss=0.8733  lr=3.08e-05
+    epoch 64/100  loss=0.8565  lr=2.94e-05
+    epoch 65/100  loss=0.8958  lr=2.80e-05
+    epoch 66/100  loss=0.8390  lr=2.67e-05
+    epoch 67/100  loss=0.8032  lr=2.53e-05
+    epoch 68/100  loss=0.8473  lr=2.40e-05
+    epoch 69/100  loss=0.8219  lr=2.27e-05
+    epoch 70/100  loss=0.7894  val_class-mAP@5=0.8313  val_part-mAP@5=0.8276  lr=2.14e-05
+    epoch 71/100  loss=0.8408  lr=2.02e-05
+    epoch 72/100  loss=0.7876  lr=1.89e-05
+    epoch 73/100  loss=0.7686  lr=1.78e-05
+    epoch 74/100  loss=0.7656  lr=1.66e-05
+    epoch 75/100  loss=0.7714  lr=1.55e-05
+    epoch 76/100  loss=0.7344  lr=1.44e-05
+    epoch 77/100  loss=0.7603  lr=1.34e-05
+    epoch 78/100  loss=0.7667  lr=1.24e-05
+    epoch 79/100  loss=0.7675  lr=1.14e-05
+    epoch 80/100  loss=0.6901  val_class-mAP@5=0.8475  val_part-mAP@5=0.8475  lr=1.05e-05
+    epoch 81/100  loss=0.6859  lr=9.56e-06
+    epoch 82/100  loss=0.7325  lr=8.71e-06
+    epoch 83/100  loss=0.7325  lr=7.89e-06
+    epoch 84/100  loss=0.7272  lr=7.12e-06
+    epoch 85/100  loss=0.7355  lr=6.40e-06
+    epoch 86/100  loss=0.7562  lr=5.71e-06
+    epoch 87/100  loss=0.7412  lr=5.07e-06
+    epoch 88/100  loss=0.6923  lr=4.48e-06
+    epoch 89/100  loss=0.6816  lr=3.93e-06
+    epoch 90/100  loss=0.7103  val_class-mAP@5=0.8437  val_part-mAP@5=0.8420  lr=3.42e-06
+    epoch 91/100  loss=0.6845  lr=2.97e-06
+    epoch 92/100  loss=0.6571  lr=2.56e-06
+    epoch 93/100  loss=0.7301  lr=2.19e-06
+    epoch 94/100  loss=0.7037  lr=1.88e-06
+    epoch 95/100  loss=0.6515  lr=1.61e-06
+    epoch 96/100  loss=0.6279  lr=1.39e-06
+    epoch 97/100  loss=0.7025  lr=1.22e-06
+    epoch 98/100  loss=0.6417  lr=1.10e-06
+    epoch 99/100  loss=0.6834  lr=1.02e-06
+    epoch 100/100  loss=0.6720  val_class-mAP@5=0.8418  val_part-mAP@5=0.8403  lr=1.00e-06
+    Saved checkpoint → outputs/checkpoints/20260917_052229_DiPVNetEncoder.pt
+  class-mAP@5 = 0.8652
+  part-mAP@5  = 0.8639
+  Sample query part profiles (first 3 queries):
+    query 0 (chair)  AP=1.0000
+      query parts: back=0.92, seat=0.92, arm=0.91, leg=0.44
+      result 1: shape 146  iou=0.75  rel=True  [back=0.94, seat=0.94, arm=0.93, leg=0.45]
+      result 2: shape 1369  iou=1.00  rel=True  [arm=0.96, back=0.94, seat=0.94, leg=0.45]
+      result 3: shape 1102  iou=0.75  rel=True  [back=0.97, seat=0.96, arm=0.95, leg=0.46]
+    query 1 (airplane)  AP=1.0000
+      query parts: wing=0.95, tail=0.95, engine=0.92, body=0.83
+      result 1: shape 2068  iou=1.00  rel=True  [wing=0.92, tail=0.91, engine=0.89, body=0.81]
+      result 2: shape 440  iou=0.67  rel=True  [wing=0.98, tail=0.98, engine=0.96, body=0.86]
+      result 3: shape 2133  iou=0.67  rel=True  [wing=0.98, tail=0.98, engine=0.96, body=0.87]
+    query 2 (lamp)  AP=0.2000
+      query parts: bulb=0.84, shade=0.84, base=0.74, tube=0.74
+      result 1: shape 1988  iou=0.00  rel=False  [barrel=0.98, trigger_guard=0.98, handle=0.46, body=0.00]
+      result 2: shape 3031  iou=0.00  rel=False  [barrel=0.99, trigger_guard=0.99, handle=0.47, body=0.00]
+      result 3: shape 773  iou=0.00  rel=False  [barrel=0.99, trigger_guard=0.99, handle=0.47, body=0.00]
+
+============================================================
+Global embedding baseline: RINet  [proxy_anchor]
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100  loss=4.1634  lr=1.00e-04
+    epoch 2/100  loss=2.8816  lr=9.99e-05
+    epoch 3/100  loss=2.6176  lr=9.98e-05
+    epoch 4/100  loss=2.3968  lr=9.96e-05
+    epoch 5/100  loss=2.2792  lr=9.94e-05
+    epoch 6/100  loss=2.0440  lr=9.91e-05
+    epoch 7/100  loss=1.9704  lr=9.88e-05
+    epoch 8/100  loss=1.8729  lr=9.84e-05
+    epoch 9/100  loss=1.7338  lr=9.80e-05
+    epoch 10/100  loss=1.7824  val_class-mAP@5=0.8163  val_part-mAP@5=0.8167  lr=9.76e-05
+    epoch 11/100  loss=1.6452  lr=9.71e-05
+    epoch 12/100  loss=1.5674  lr=9.65e-05
+    epoch 13/100  loss=1.5336  lr=9.59e-05
+    epoch 14/100  loss=1.4525  lr=9.53e-05
+    epoch 15/100  loss=1.4775  lr=9.46e-05
+    epoch 16/100  loss=1.3923  lr=9.39e-05
+    epoch 17/100  loss=1.3518  lr=9.31e-05
+    epoch 18/100  loss=1.3553  lr=9.23e-05
+    epoch 19/100  loss=1.2504  lr=9.14e-05
+    epoch 20/100  loss=1.2775  val_class-mAP@5=0.7963  val_part-mAP@5=0.7939  lr=9.05e-05
+    epoch 21/100  loss=1.2349  lr=8.96e-05
+    epoch 22/100  loss=1.2072  lr=8.86e-05
+    epoch 23/100  loss=1.1740  lr=8.76e-05
+    epoch 24/100  loss=1.1578  lr=8.66e-05
+    epoch 25/100  loss=1.1074  lr=8.55e-05
+    epoch 26/100  loss=1.1599  lr=8.44e-05
+    epoch 27/100  loss=1.1104  lr=8.32e-05
+    epoch 28/100  loss=1.1341  lr=8.21e-05
+    epoch 29/100  loss=1.0201  lr=8.08e-05
+    epoch 30/100  loss=1.0626  val_class-mAP@5=0.8006  val_part-mAP@5=0.8001  lr=7.96e-05
+    epoch 31/100  loss=1.0197  lr=7.83e-05
+    epoch 32/100  loss=0.9470  lr=7.70e-05
+    epoch 33/100  loss=1.0185  lr=7.57e-05
+    epoch 34/100  loss=0.9767  lr=7.43e-05
+    epoch 35/100  loss=0.9967  lr=7.30e-05
+    epoch 36/100  loss=0.8784  lr=7.16e-05
+    epoch 37/100  loss=0.9236  lr=7.02e-05
+    epoch 38/100  loss=0.9249  lr=6.87e-05
+    epoch 39/100  loss=0.9193  lr=6.73e-05
+    epoch 40/100  loss=0.8600  val_class-mAP@5=0.8009  val_part-mAP@5=0.8006  lr=6.58e-05
+    epoch 41/100  loss=0.8617  lr=6.43e-05
+    epoch 42/100  loss=0.8618  lr=6.28e-05
+    epoch 43/100  loss=0.8288  lr=6.13e-05
+    epoch 44/100  loss=0.8094  lr=5.98e-05
+    epoch 45/100  loss=0.8551  lr=5.82e-05
+    epoch 46/100  loss=0.8063  lr=5.67e-05
+    epoch 47/100  loss=0.7333  lr=5.52e-05
+    epoch 48/100  loss=0.7578  lr=5.36e-05
+    epoch 49/100  loss=0.7950  lr=5.21e-05
+    epoch 50/100  loss=0.7678  val_class-mAP@5=0.7803  val_part-mAP@5=0.7789  lr=5.05e-05
+    epoch 51/100  loss=0.7906  lr=4.89e-05
+    epoch 52/100  loss=0.7170  lr=4.74e-05
+    epoch 53/100  loss=0.7130  lr=4.58e-05
+    epoch 54/100  loss=0.7255  lr=4.43e-05
+    epoch 55/100  loss=0.8062  lr=4.28e-05
+    epoch 56/100  loss=0.6679  lr=4.12e-05
+    epoch 57/100  loss=0.7146  lr=3.97e-05
+    epoch 58/100  loss=0.7423  lr=3.82e-05
+    epoch 59/100  loss=0.6254  lr=3.67e-05
+    epoch 60/100  loss=0.6957  val_class-mAP@5=0.8100  val_part-mAP@5=0.8084  lr=3.52e-05
+    epoch 61/100  loss=0.6915  lr=3.37e-05
+    epoch 62/100  loss=0.6027  lr=3.23e-05
+    epoch 63/100  loss=0.5924  lr=3.08e-05
+    epoch 64/100  loss=0.5846  lr=2.94e-05
+    epoch 65/100  loss=0.6049  lr=2.80e-05
+    epoch 66/100  loss=0.6471  lr=2.67e-05
+    epoch 67/100  loss=0.6107  lr=2.53e-05
+    epoch 68/100  loss=0.6062  lr=2.40e-05
+    epoch 69/100  loss=0.5919  lr=2.27e-05
+    epoch 70/100  loss=0.5409  val_class-mAP@5=0.8146  val_part-mAP@5=0.8144  lr=2.14e-05
+    epoch 71/100  loss=0.6302  lr=2.02e-05
+    epoch 72/100  loss=0.5668  lr=1.89e-05
+    epoch 73/100  loss=0.5568  lr=1.78e-05
+    epoch 74/100  loss=0.5870  lr=1.66e-05
+    epoch 75/100  loss=0.5537  lr=1.55e-05
+    epoch 76/100  loss=0.5504  lr=1.44e-05
+    epoch 77/100  loss=0.5733  lr=1.34e-05
+    epoch 78/100  loss=0.5754  lr=1.24e-05
+    epoch 79/100  loss=0.4680  lr=1.14e-05
+    epoch 80/100  loss=0.5308  val_class-mAP@5=0.8185  val_part-mAP@5=0.8174  lr=1.05e-05
+    epoch 81/100  loss=0.4981  lr=9.56e-06
+    epoch 82/100  loss=0.5390  lr=8.71e-06
+    epoch 83/100  loss=0.5285  lr=7.89e-06
+    epoch 84/100  loss=0.5174  lr=7.12e-06
+    epoch 85/100  loss=0.5070  lr=6.40e-06
+    epoch 86/100  loss=0.4608  lr=5.71e-06
+    epoch 87/100  loss=0.4931  lr=5.07e-06
+    epoch 88/100  loss=0.4914  lr=4.48e-06
+    epoch 89/100  loss=0.5264  lr=3.93e-06
+    epoch 90/100  loss=0.5197  val_class-mAP@5=0.8201  val_part-mAP@5=0.8195  lr=3.42e-06
+    epoch 91/100  loss=0.5408  lr=2.97e-06
+    epoch 92/100  loss=0.4836  lr=2.56e-06
+    epoch 93/100  loss=0.4680  lr=2.19e-06
+    epoch 94/100  loss=0.5132  lr=1.88e-06
+    epoch 95/100  loss=0.4550  lr=1.61e-06
+    epoch 96/100  loss=0.5113  lr=1.39e-06
+    epoch 97/100  loss=0.4594  lr=1.22e-06
+    epoch 98/100  loss=0.4597  lr=1.10e-06
+    epoch 99/100  loss=0.4954  lr=1.02e-06
+    epoch 100/100  loss=0.4829  val_class-mAP@5=0.8065  val_part-mAP@5=0.8054  lr=1.00e-06
+    Saved checkpoint → outputs/checkpoints/20260917_070444_RINet.pt
+  class-mAP@5 = 0.8604
+  part-mAP@5  = 0.8568
+  Sample query part profiles (first 3 queries):
+    query 0 (chair)  AP=0.5000
+      query parts: back=0.92, seat=0.92, arm=0.91, leg=0.44
+      result 1: shape 2178  iou=0.00  rel=False  [top=0.99, support=0.97, leg=0.87, body=0.00]
+      result 2: shape 2669  iou=0.75  rel=True  [arm=0.95, back=0.95, seat=0.94, leg=0.45]
+      result 3: shape 2412  iou=0.00  rel=False  [top=0.97, support=0.97, leg=0.85, body=0.00]
+    query 1 (airplane)  AP=1.0000
+      query parts: wing=0.95, tail=0.95, engine=0.92, body=0.83
+      result 1: shape 1296  iou=1.00  rel=True  [wing=0.87, tail=0.87, engine=0.85, body=0.77]
+      result 2: shape 1439  iou=0.50  rel=True  [tail=0.99, wing=0.99, engine=0.98, body=0.87]
+      result 3: shape 2394  iou=0.67  rel=True  [tail=0.96, wing=0.96, engine=0.94, body=0.84]
+    query 2 (lamp)  AP=0.4778
+      query parts: bulb=0.84, shade=0.84, base=0.74, tube=0.74
+      result 1: shape 3096  iou=0.00  rel=False  [back=0.81, seat=0.81, arm=0.75, leg=0.39]
+      result 2: shape 2127  iou=0.00  rel=False  [top=0.95, support=0.95, leg=0.83, body=0.00]
+      result 3: shape 1315  iou=0.50  rel=True  [tube=1.00, shade=0.93, bulb=0.92, base=0.69]
+
+============================================================
+Global embedding baseline: RISA  [proxy_anchor]
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+[W917 07:04:54.625574766 Context.cpp:424] Warning: torch.backends.cuda.preferred_linalg_library is an experimental feature. If you see any error or unexpected behavior when this flag is set please file an issue on GitHub. (function operator())
+    epoch 1/100  loss=2.8756  lr=1.00e-04
+    epoch 2/100  loss=1.7155  lr=9.99e-05
+    epoch 3/100  loss=1.5124  lr=9.98e-05
+    epoch 4/100  loss=1.3753  lr=9.96e-05
+    epoch 5/100  loss=1.2153  lr=9.94e-05
+    epoch 6/100  loss=1.0876  lr=9.91e-05
+    epoch 7/100  loss=1.0918  lr=9.88e-05
+    epoch 8/100  loss=1.0156  lr=9.84e-05
+    epoch 9/100  loss=0.9441  lr=9.80e-05
+    epoch 10/100  loss=0.9240  val_class-mAP@5=0.8553  val_part-mAP@5=0.8530  lr=9.76e-05
+    epoch 11/100  loss=0.8747  lr=9.71e-05
+    epoch 12/100  loss=0.8318  lr=9.65e-05
+    epoch 13/100  loss=0.8484  lr=9.59e-05
+    epoch 14/100  loss=0.7811  lr=9.53e-05
+    epoch 15/100  loss=0.7485  lr=9.46e-05
+    epoch 16/100  loss=0.7466  lr=9.39e-05
+    epoch 17/100  loss=0.7516  lr=9.31e-05
+    epoch 18/100  loss=0.6841  lr=9.23e-05
+    epoch 19/100  loss=0.6736  lr=9.14e-05
+    epoch 20/100  loss=0.6458  val_class-mAP@5=0.8764  val_part-mAP@5=0.8740  lr=9.05e-05
+    epoch 21/100  loss=0.6691  lr=8.96e-05
+    epoch 22/100  loss=0.6623  lr=8.86e-05
+    epoch 23/100  loss=0.6732  lr=8.76e-05
+    epoch 24/100  loss=0.6164  lr=8.66e-05
+    epoch 25/100  loss=0.5540  lr=8.55e-05
+    epoch 26/100  loss=0.6148  lr=8.44e-05
+    epoch 27/100  loss=0.6073  lr=8.32e-05
+    epoch 28/100  loss=0.5934  lr=8.21e-05
+    epoch 29/100  loss=0.5727  lr=8.08e-05
+    epoch 30/100  loss=0.5490  val_class-mAP@5=0.8928  val_part-mAP@5=0.8878  lr=7.96e-05
+    epoch 31/100  loss=0.4928  lr=7.83e-05
+    epoch 32/100  loss=0.5057  lr=7.70e-05
+    epoch 33/100  loss=0.5027  lr=7.57e-05
+    epoch 34/100  loss=0.4983  lr=7.43e-05
+    epoch 35/100  loss=0.5440  lr=7.30e-05
+    epoch 36/100  loss=0.4378  lr=7.16e-05
+    epoch 37/100  loss=0.4939  lr=7.02e-05
+    epoch 38/100  loss=0.4379  lr=6.87e-05
+    epoch 39/100  loss=0.4188  lr=6.73e-05
+    epoch 40/100  loss=0.3929  val_class-mAP@5=0.8931  val_part-mAP@5=0.8895  lr=6.58e-05
+    epoch 41/100  loss=0.4115  lr=6.43e-05
+    epoch 42/100  loss=0.3859  lr=6.28e-05
+    epoch 43/100  loss=0.3526  lr=6.13e-05
+    epoch 44/100  loss=0.3621  lr=5.98e-05
+    epoch 45/100  loss=0.3893  lr=5.82e-05
+    epoch 46/100  loss=0.3473  lr=5.67e-05
+    epoch 47/100  loss=0.3318  lr=5.52e-05
+    epoch 48/100  loss=0.3181  lr=5.36e-05
+    epoch 49/100  loss=0.3445  lr=5.21e-05
+    epoch 50/100  loss=0.3494  val_class-mAP@5=0.8928  val_part-mAP@5=0.8880  lr=5.05e-05
+    epoch 51/100  loss=0.3391  lr=4.89e-05
+    epoch 52/100  loss=0.2716  lr=4.74e-05
+    epoch 53/100  loss=0.2710  lr=4.58e-05
+    epoch 54/100  loss=0.2948  lr=4.43e-05
+    epoch 55/100  loss=0.3248  lr=4.28e-05
+    epoch 56/100  loss=0.2346  lr=4.12e-05
+    epoch 57/100  loss=0.2488  lr=3.97e-05
+    epoch 58/100  loss=0.2648  lr=3.82e-05
+    epoch 59/100  loss=0.1993  lr=3.67e-05
+    epoch 60/100  loss=0.2456  val_class-mAP@5=0.9038  val_part-mAP@5=0.9010  lr=3.52e-05
+    epoch 61/100  loss=0.2313  lr=3.37e-05
+    epoch 62/100  loss=0.1928  lr=3.23e-05
+    epoch 63/100  loss=0.1676  lr=3.08e-05
+    epoch 64/100  loss=0.1741  lr=2.94e-05
+    epoch 65/100  loss=0.1779  lr=2.80e-05
+    epoch 66/100  loss=0.1708  lr=2.67e-05
+    epoch 67/100  loss=0.1516  lr=2.53e-05
+    epoch 68/100  loss=0.1745  lr=2.40e-05
+    epoch 69/100  loss=0.1434  lr=2.27e-05
+    epoch 70/100  loss=0.1466  val_class-mAP@5=0.8943  val_part-mAP@5=0.8906  lr=2.14e-05
+    epoch 71/100  loss=0.1805  lr=2.02e-05
+    epoch 72/100  loss=0.1523  lr=1.89e-05
+    epoch 73/100  loss=0.1360  lr=1.78e-05
+    epoch 74/100  loss=0.1425  lr=1.66e-05
+    epoch 75/100  loss=0.1369  lr=1.55e-05
+    epoch 76/100  loss=0.1113  lr=1.44e-05
+    epoch 77/100  loss=0.1371  lr=1.34e-05
+    epoch 78/100  loss=0.1469  lr=1.24e-05
+    epoch 79/100  loss=0.0971  lr=1.14e-05
+    epoch 80/100  loss=0.1124  val_class-mAP@5=0.9113  val_part-mAP@5=0.9093  lr=1.05e-05
+    epoch 81/100  loss=0.1038  lr=9.56e-06
+    epoch 82/100  loss=0.0911  lr=8.71e-06
+    epoch 83/100  loss=0.1080  lr=7.89e-06
+    epoch 84/100  loss=0.1024  lr=7.12e-06
+    epoch 85/100  loss=0.0910  lr=6.40e-06
+    epoch 86/100  loss=0.0783  lr=5.71e-06
+    epoch 87/100  loss=0.0979  lr=5.07e-06
+    epoch 88/100  loss=0.0892  lr=4.48e-06
+    epoch 89/100  loss=0.1201  lr=3.93e-06
+    epoch 90/100  loss=0.1144  val_class-mAP@5=0.9102  val_part-mAP@5=0.9078  lr=3.42e-06
+    epoch 91/100  loss=0.1143  lr=2.97e-06
+    epoch 92/100  loss=0.0971  lr=2.56e-06
+    epoch 93/100  loss=0.0756  lr=2.19e-06
+    epoch 94/100  loss=0.1039  lr=1.88e-06
+    epoch 95/100  loss=0.0758  lr=1.61e-06
+    epoch 96/100  loss=0.0956  lr=1.39e-06
+    epoch 97/100  loss=0.0769  lr=1.22e-06
+    epoch 98/100  loss=0.0919  lr=1.10e-06
+    epoch 99/100  loss=0.1003  lr=1.02e-06
+    epoch 100/100  loss=0.0858  val_class-mAP@5=0.9063  val_part-mAP@5=0.9038  lr=1.00e-06
+    Saved checkpoint → outputs/checkpoints/20260917_132900_RotationInvariantSparseAttention.pt
+  class-mAP@5 = 0.9372
+  part-mAP@5  = 0.9347
+  Sample query part profiles (first 3 queries):
+    query 0 (chair)  AP=1.0000
+      query parts: back=0.92, seat=0.92, arm=0.91, leg=0.44
+      result 1: shape 1335  iou=1.00  rel=True  [arm=0.91, back=0.90, seat=0.89, leg=0.43]
+      result 2: shape 1065  iou=1.00  rel=True  [arm=0.95, back=0.94, seat=0.94, leg=0.45]
+      result 3: shape 1808  iou=0.75  rel=True  [arm=0.98, back=0.98, seat=0.97, leg=0.47]
+    query 1 (airplane)  AP=1.0000
+      query parts: wing=0.95, tail=0.95, engine=0.92, body=0.83
+      result 1: shape 1863  iou=0.67  rel=True  [tail=0.95, wing=0.95, engine=0.93, body=0.83]
+      result 2: shape 589  iou=0.67  rel=True  [wing=0.98, tail=0.98, engine=0.96, body=0.86]
+      result 3: shape 493  iou=1.00  rel=True  [wing=0.96, tail=0.96, engine=0.93, body=0.84]
+    query 2 (lamp)  AP=1.0000
+      query parts: bulb=0.84, shade=0.84, base=0.74, tube=0.74
+      result 1: shape 1408  iou=0.33  rel=True  [bulb=0.97, shade=0.97, tube=0.86, base=0.81]
+      result 2: shape 3216  iou=0.67  rel=True  [tube=0.98, shade=0.98, bulb=0.98, base=0.77]
+      result 3: shape 1491  iou=0.67  rel=True  [bulb=0.99, shade=0.98, tube=0.87, base=0.82]
+
+============================================================
+Method                  class-mAP@5   part-mAP@5
+----------------------------------------------
+3D-SIFT-InvIndex             0.3102       0.3089
+PointNet++                   0.8633       0.8625
+DGCNN                        0.8966       0.8947
+DiPVNet                      0.8652       0.8639
+RINet                        0.8604       0.8568
+RISA                         0.9372       0.9347
+
+Results saved → /home/grad/smenon/retrieval_paper/outputs/exp8_part_retrieval.json

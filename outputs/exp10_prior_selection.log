@@ -1,0 +1,18 @@
+Device: cuda  K=256  epochs=100
+✓ Loaded ModelNet40 test: 2468 samples, 40 categories
+
+============================================================
+Prior: full_N  (K=1024)
+✓ Loaded ModelNet40 train: 9840 samples, 40 categories
+[W1005 19:11:10.218406061 Context.cpp:424] Warning: torch.backends.cuda.preferred_linalg_library is an experimental feature. If you see any error or unexpected behavior when this flag is set please file an issue on GitHub. (function operator())
+    epoch 1/100  loss=5.8727  lr=1.00e-04
+    epoch 2/100  loss=4.2203  lr=9.99e-05
+    epoch 3/100  loss=3.7091  lr=9.98e-05
+    epoch 4/100  loss=3.3769  lr=9.96e-05
+    epoch 5/100  loss=3.1697  lr=9.94e-05
+    epoch 6/100  loss=3.0299  lr=9.91e-05
+    epoch 7/100  loss=2.9027  lr=9.88e-05
+    epoch 8/100  loss=2.7506  lr=9.84e-05
+    epoch 9/100  loss=2.7734  lr=9.80e-05
+    epoch 10/100  loss=2.6625  lr=9.76e-05
+    epoch 11/100  loss=2.5741  lr=9.71e-05

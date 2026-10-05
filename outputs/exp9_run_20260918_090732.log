@@ -1,0 +1,66 @@
+Device: cuda
+Loading ShapeNet test set (1024 pts per shape)...
+✓ Loaded ShapeNet test: 3370 samples (per-point labels: True)
+  3370 test shapes, 16 classes
+
+Evaluating 620 queries (50 per class)
+
+============================================================
+Method A: 3D-SIFT-InvIndex (FPFH descriptors)
+  Loading FPFH cache: /home/grad/smenon/retrieval_paper/outputs/exp8_sift_cache.npz
+  Total FPFH descriptors: 215,680
+  Building vocabulary: 512 words from 215,680 descriptors...
+  Vocabulary ready.
+  class-mAP@5 = 0.3102
+  part-mAP@5  = 0.3089
+
+============================================================
+Loading RISA (feat_dim=256)...
+  Loaded RISA checkpoint: outputs/checkpoints/20260917_132900_RotationInvariantSparseAttention.pt
+
+============================================================
+Method B: RISA-InvIndex (per-point features as descriptors)
+  Extracting RISA per-point features for all shapes...
+[W918 09:07:37.582647687 Context.cpp:424] Warning: torch.backends.cuda.preferred_linalg_library is an experimental feature. If you see any error or unexpected behavior when this flag is set please file an issue on GitHub. (function operator())
+  500/3370 shapes encoded...
+  1000/3370 shapes encoded...
+  1500/3370 shapes encoded...
+  2000/3370 shapes encoded...
+  2500/3370 shapes encoded...
+  3000/3370 shapes encoded...
+  Total RISA descriptors: 215,680  dim=256
+  Building vocabulary: 512 words from 215,680 descriptors...
+  Vocabulary ready.
+  class-mAP@5 = 0.6757
+  part-mAP@5  = 0.6695
+
+============================================================
+Method C: RISA-Global (global embedding retrieval)
+  class-mAP@5 = 0.8429
+  part-mAP@5  = 0.8386
+
+============================================================
+Method                  class-mAP@5   part-mAP@5
+----------------------------------------------
+3D-SIFT-InvIndex             0.3102       0.3089
+RISA-InvIndex                0.6757       0.6695
+RISA-Global                  0.8429       0.8386
+
+Sample part profiles — RISA-InvIndex (first 3 queries):
+  query 0 (chair)  AP=0.6792
+    query parts: chair/leg=0.32, chair/back=0.32, chair/seat=0.24, chair/arm=0.12
+    result 1: shape 1149  iou=0.00  rel=False  [table/top=0.62, table/leg=0.38]
+    result 2: shape 3194  iou=0.75  rel=True  [chair/seat=0.40, chair/back=0.31, chair/leg=0.28]
+    result 3: shape 2471  iou=0.75  rel=True  [chair/seat=0.48, chair/leg=0.26, chair/back=0.26]
+  query 1 (airplane)  AP=0.6792
+    query parts: airplane/wing=0.52, airplane/body=0.43, airplane/tail=0.05
+    result 1: shape 1064  iou=0.00  rel=False  [rocket/nose=0.54, rocket/body=0.32, rocket/fin=0.14]
+    result 2: shape 3056  iou=1.00  rel=True  [airplane/wing=0.54, airplane/body=0.34, airplane/tail=0.09, airplane/engine=0.03]
+    result 3: shape 2682  iou=1.00  rel=True  [airplane/body=0.76, airplane/wing=0.19, airplane/tail=0.05, airplane/engine=0.00]
+  query 2 (lamp)  AP=0.9167
+    query parts: lamp/shade=0.52, lamp/base=0.48
+    result 1: shape 210  iou=0.67  rel=True  [lamp/bulb=0.49, lamp/base=0.36, lamp/shade=0.15]
+    result 2: shape 1955  iou=0.67  rel=True  [lamp/bulb=0.51, lamp/shade=0.28, lamp/base=0.21]
+    result 3: shape 1566  iou=0.00  rel=False  [rocket/nose=0.70, rocket/body=0.25, rocket/fin=0.05]
+
+Results saved → /home/grad/smenon/retrieval_paper/outputs/exp9_risa_sift.json

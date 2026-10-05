@@ -526,13 +526,17 @@ class SparsePointCloudAttention(nn.Module):
         none: base attention
         add: additional term (pointTransformerV2 method) based on relative position encoding
         weight: elementwise weighting based on relative position encoding
-    
+
     Allows for passing a global token whose update is computed by attending to all features.
+
+    Multi-head attention splits model_dim into num_heads independent heads,
+    each attending to a head_dim = model_dim // num_heads subspace.
     """
     def __init__(
             self,
             out_dim,
             model_dim = None,
+            num_heads : int = 4,
             pos_enc_feature_dim = GeometricInvariantExtractor.pos_enc_dim,
             attn_augment : Literal["none", "add", "weight"] = "none",
         ):
@@ -542,12 +546,15 @@ class SparsePointCloudAttention(nn.Module):
 
         self.model_dim = model_dim
         self.out_dim = out_dim
-        # Residual connection requires matching dimensions.  The model is always
-        # instantiated with out_dim == model_dim; assert here to catch misuse early.
         assert out_dim == model_dim, (
             f"SparsePointCloudAttention: out_dim ({out_dim}) must equal model_dim ({model_dim}) "
             "for the residual connection.  Use a separate projection layer if you need dimension change."
         )
+        assert model_dim % num_heads == 0, (
+            f"model_dim ({model_dim}) must be divisible by num_heads ({num_heads})"
+        )
+        self.num_heads = num_heads
+        self.head_dim  = model_dim // num_heads
 
         self.pre_norm     = nn.LayerNorm(model_dim)
         self.enc_pre_norm = nn.LayerNorm(model_dim)
@@ -563,12 +570,11 @@ class SparsePointCloudAttention(nn.Module):
         self.enc_out      = nn.Linear(model_dim, out_dim)
 
         if self.attn_augment in ["add", "weight"]:
-
             mlp_dim = model_dim * 2
             self.pos_enc_mlp = nn.Sequential(
                 nn.Linear(pos_enc_feature_dim, mlp_dim),
                 nn.GELU(),
-                nn.Linear(mlp_dim, 1 if self.attn_augment == "add" else model_dim)
+                nn.Linear(mlp_dim, num_heads if self.attn_augment == "add" else model_dim)
             )
         else:
             self.pos_enc_mlp = None
@@ -579,12 +585,15 @@ class SparsePointCloudAttention(nn.Module):
             enc_token : torch.Tensor    = None,
             indices : torch.Tensor      = None,
             pos_enc : torch.Tensor      = None,
+            update_points : bool        = True,
+            return_weights : bool       = False,
         ):
 
         B, C, N = features.shape
+        H, D = self.num_heads, self.head_dim
 
-        f_norm = self.pre_norm(features.transpose(1, 2))
-        Q = self.q_linear(f_norm)
+        f_norm = self.pre_norm(features.transpose(1, 2))  # [B, N, C]
+        Q = self.q_linear(f_norm)  # [B, N, C]
         K = self.k_linear(f_norm)
         V = self.v_linear(f_norm)
 
@@ -598,40 +607,51 @@ class SparsePointCloudAttention(nn.Module):
             )
 
         indices = indices.long()
-        A = indices.size(-1) # [B, N, A]
+        A = indices.size(-1)
 
-        batch_idx = torch.arange(B, device = features.device).view(B, 1, 1).expand(-1, N, A)
+        batch_idx = torch.arange(B, device=features.device).view(B, 1, 1).expand(-1, N, A)
 
         K_gathered = K[batch_idx, indices]  # [B, N, A, C]
         V_gathered = V[batch_idx, indices]  # [B, N, A, C]
 
-        similarity = Q.unsqueeze(2) * K_gathered
+        # Reshape into heads: [B, N, A, H, D]
+        Q_h = Q.unsqueeze(2).expand(-1, -1, A, -1).reshape(B, N, A, H, D)
+        K_h = K_gathered.reshape(B, N, A, H, D)
+        V_h = V_gathered.reshape(B, N, A, H, D)
+
+        # Per-head dot-product similarity: [B, N, A, H]
+        similarity = (Q_h * K_h).sum(dim=-1) / (D ** 0.5)
 
         if pos_enc is not None and self.attn_augment == "weight":
-            similarity = similarity * self.pos_enc_mlp(pos_enc)
-
-        scores = similarity.sum(dim = -1) / (C ** 0.5)  # [B, N, A]
+            # [B, N, A, C] → reshape to [B, N, A, H, D] and scale per head
+            weight = self.pos_enc_mlp(pos_enc).reshape(B, N, A, H, D)
+            similarity = (Q_h * K_h * weight).sum(dim=-1) / (D ** 0.5)
 
         if pos_enc is not None and self.attn_augment == "add":
-            scores = scores + self.pos_enc_mlp(pos_enc).squeeze(-1)
+            # [B, N, A, H]
+            similarity = similarity + self.pos_enc_mlp(pos_enc)
 
-        attn = F.softmax(scores, dim = -1)
+        attn = F.softmax(similarity, dim=2)  # [B, N, A, H]
 
-        out_features = self.o_linear((attn.unsqueeze(-1) * V_gathered).sum(dim = 2))
+        # Weighted sum over attended points: [B, N, H, D]
+        out_h = (attn.unsqueeze(-1) * V_h).sum(dim=2)  # [B, N, A, H, D] → [B, N, H, D]
+        out_features = self.o_linear(out_h.reshape(B, N, C))  # [B, N, C]
 
-        # Update features with residual connection
-        features = features + out_features.transpose(1, 2) # [B, C, N] to match input format
+        # Residual connection — only update point features if requested (Perceiver-style: only block 0)
+        if update_points:
+            features = features + out_features.transpose(1, 2)  # [B, C, N]
 
         # Update global token
+        attn_enc = None
         if enc_token is not None:
-            Q_enc           = self.enc_q_linear(self.enc_pre_norm(enc_token.transpose(1, 2)))   # [B, 1, C]
-            scores_enc      = (Q_enc @ K.transpose(1, 2)) / (C ** 0.5)      # [B, 1, N]
-            attn_enc        = F.softmax(scores_enc, dim=-1)                  # [B, 1, N]
-            out_encoding    = self.enc_out(attn_enc @ V)                     # [B, 1, out_dim]
-            # enc_out projects to out_dim == model_dim (asserted above), so
-            # the residual addition is always dimension-safe.
-            enc_token       = enc_token + out_encoding.transpose(1, 2)       # [B, model_dim, 1]
+            Q_enc      = self.enc_q_linear(self.enc_pre_norm(enc_token.transpose(1, 2)))  # [B, 1, C]
+            scores_enc = (Q_enc @ K.transpose(1, 2)) / (C ** 0.5)                        # [B, 1, N]
+            attn_enc   = F.softmax(scores_enc, dim=-1)                                    # [B, 1, N]
+            out_enc    = self.enc_out(attn_enc @ V)                                       # [B, 1, out_dim]
+            enc_token  = enc_token + out_enc.transpose(1, 2)                              # [B, model_dim, 1]
 
+        if return_weights:
+            return features, enc_token, attn_enc  # attn_enc: [B, 1, N]
         return features, enc_token
 
 class RotationInvariantSparseAttention(nn.Module):
@@ -651,10 +671,12 @@ class RotationInvariantSparseAttention(nn.Module):
             attn_augment : Literal["none", "add", "weight"] = "weight",
             encoding_method : Literal["mean", "max", "token"] = "token",
             grad_checkpoint : bool  = False,
+            perceiver : bool        = True,
         ):
         super().__init__()
 
         self.grad_checkpoint = grad_checkpoint
+        self.perceiver = perceiver
         self.encoding_out_dim = encoding_out_dim
         self.model_dim   = model_dim
 
@@ -687,6 +709,7 @@ class RotationInvariantSparseAttention(nn.Module):
             SparsePointCloudAttention(
                 model_dim    = model_dim,
                 out_dim      = model_dim,
+                num_heads    = 4,
                 attn_augment = attn_augment,
             )
             for _ in range(num_blocks)
@@ -766,13 +789,26 @@ class RotationInvariantSparseAttention(nn.Module):
             device = x.device
         ) if self.encoding_method == "token" else None
 
-        for block in self.blocks:
-            features, encoding_token = block(
-                features,
-                enc_token   = encoding_token,
-                pos_enc     = pos_enc,
-                indices     = indices
-            )
+        for i, block in enumerate(self.blocks):
+            if self.grad_checkpoint and self.training:
+                import torch.utils.checkpoint as cp
+                def _block_fn(f, t, pe, idx, _block=block, _up=(i==0) if self.perceiver else True):
+                    return _block(f, enc_token=t, pos_enc=pe, indices=idx, update_points=_up)
+                features, encoding_token = cp.checkpoint(
+                    _block_fn, features, encoding_token, pos_enc, indices,
+                    use_reentrant=False,
+                )
+            else:
+                # First block: update both N point features and token
+                # Subsequent blocks: only update token, point features are frozen
+                _token_in = encoding_token if self.encoding_method == "token" else None
+                features, encoding_token = block(
+                    features,
+                    enc_token     = _token_in,
+                    pos_enc       = pos_enc,
+                    indices       = indices,
+                    update_points = (i == 0) if self.perceiver else True,
+                )
 
         features = self.features_post(features)
         encoding = self.postprocess_object_encoding(

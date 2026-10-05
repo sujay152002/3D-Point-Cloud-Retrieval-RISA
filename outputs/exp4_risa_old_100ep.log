@@ -1,0 +1,141 @@
+=== Perceiver done ===
+Device: cuda
+Loading datasets…
+✓ Loaded ModelNet40 test: 2468 samples, 40 categories
+✓ Loaded ScanObjectNN test: 581 samples
+  MN40 shared shapes:    606
+  ScanObjNN shared shapes: 267
+
+============================================================
+Model: RISA
+✓ Loaded ModelNet40 train: 9840 samples, 40 categories
+✓ Loaded ModelNet40 test: 2468 samples, 40 categories
+[W929 14:03:39.761306232 Context.cpp:424] Warning: torch.backends.cuda.preferred_linalg_library is an experimental feature. If you see any error or unexpected behavior when this flag is set please file an issue on GitHub. (function operator())
+    epoch 1/100  train_loss=2.8010  train_acc=0.2509  lr=1.00e-03
+    epoch 2/100  train_loss=2.2786  train_acc=0.3666  lr=9.99e-04
+    epoch 3/100  train_loss=2.0668  train_acc=0.4157  lr=9.98e-04
+    epoch 4/100  train_loss=1.9476  train_acc=0.4465  lr=9.96e-04
+    epoch 5/100  train_loss=1.8561  train_acc=0.4756  lr=9.94e-04
+    epoch 6/100  train_loss=1.8000  train_acc=0.4905  lr=9.91e-04
+    epoch 7/100  train_loss=1.7133  train_acc=0.5058  lr=9.88e-04
+    epoch 8/100  train_loss=1.7048  train_acc=0.5053  lr=9.84e-04
+    epoch 9/100  train_loss=1.6620  train_acc=0.5257  lr=9.80e-04
+    epoch 10/100  train_loss=1.6638  train_acc=0.5226  lr=9.76e-04
+    epoch 10/100  val_loss=16.4415  val_acc=0.0429  val_R@1=0.2996  val_R@5=0.5318  val_mAP@5=0.3667 ★
+    epoch 11/100  train_loss=1.6269  train_acc=0.5332  lr=9.70e-04
+    epoch 12/100  train_loss=1.5746  train_acc=0.5526  lr=9.65e-04
+    epoch 13/100  train_loss=1.5529  train_acc=0.5578  lr=9.59e-04
+    epoch 14/100  train_loss=1.5318  train_acc=0.5592  lr=9.52e-04
+    epoch 15/100  train_loss=1.5360  train_acc=0.5664  lr=9.46e-04
+    epoch 16/100  train_loss=1.5119  train_acc=0.5711  lr=9.38e-04
+    epoch 17/100  train_loss=1.4760  train_acc=0.5800  lr=9.30e-04
+    epoch 18/100  train_loss=1.4466  train_acc=0.5821  lr=9.22e-04
+    epoch 19/100  train_loss=1.4372  train_acc=0.5832  lr=9.14e-04
+    epoch 20/100  train_loss=1.4161  train_acc=0.5932  lr=9.05e-04
+    epoch 20/100  val_loss=48.3702  val_acc=0.0709  val_R@1=0.3258  val_R@5=0.5693  val_mAP@5=0.4016 ★
+    epoch 21/100  train_loss=1.4191  train_acc=0.5958  lr=8.95e-04
+    epoch 22/100  train_loss=1.4075  train_acc=0.5906  lr=8.85e-04
+    epoch 23/100  train_loss=1.4060  train_acc=0.5981  lr=8.75e-04
+    epoch 24/100  train_loss=1.4037  train_acc=0.5929  lr=8.65e-04
+    epoch 25/100  train_loss=1.3534  train_acc=0.6114  lr=8.54e-04
+    epoch 26/100  train_loss=1.3513  train_acc=0.6143  lr=8.42e-04
+    epoch 27/100  train_loss=1.3167  train_acc=0.6200  lr=8.31e-04
+    epoch 28/100  train_loss=1.2807  train_acc=0.6282  lr=8.19e-04
+    epoch 29/100  train_loss=1.2821  train_acc=0.6268  lr=8.07e-04
+    epoch 30/100  train_loss=1.2780  train_acc=0.6315  lr=7.94e-04
+    epoch 30/100  val_loss=17.8593  val_acc=0.0563  val_R@1=0.3109  val_R@5=0.5693  val_mAP@5=0.3989
+    epoch 31/100  train_loss=1.2535  train_acc=0.6352  lr=7.81e-04
+    epoch 32/100  train_loss=1.2329  train_acc=0.6401  lr=7.68e-04
+    epoch 33/100  train_loss=1.2426  train_acc=0.6435  lr=7.55e-04
+    epoch 34/100  train_loss=1.2246  train_acc=0.6468  lr=7.41e-04
+    epoch 35/100  train_loss=1.2224  train_acc=0.6429  lr=7.27e-04
+    epoch 36/100  train_loss=1.2018  train_acc=0.6546  lr=7.13e-04
+    epoch 37/100  train_loss=1.1975  train_acc=0.6522  lr=6.99e-04
+    epoch 38/100  train_loss=1.1882  train_acc=0.6537  lr=6.84e-04
+    epoch 39/100  train_loss=1.2061  train_acc=0.6485  lr=6.70e-04
+    epoch 40/100  train_loss=1.1771  train_acc=0.6608  lr=6.55e-04
+    epoch 40/100  val_loss=29.1818  val_acc=0.0231  val_R@1=0.3596  val_R@5=0.5693  val_mAP@5=0.4115 ★
+    epoch 41/100  train_loss=1.1835  train_acc=0.6575  lr=6.40e-04
+    epoch 42/100  train_loss=1.1295  train_acc=0.6668  lr=6.25e-04
+    epoch 43/100  train_loss=1.1287  train_acc=0.6706  lr=6.09e-04
+    epoch 44/100  train_loss=1.1290  train_acc=0.6667  lr=5.94e-04
+    epoch 45/100  train_loss=1.1211  train_acc=0.6764  lr=5.79e-04
+    epoch 46/100  train_loss=1.0742  train_acc=0.6836  lr=5.63e-04
+    epoch 47/100  train_loss=1.0701  train_acc=0.6862  lr=5.48e-04
+    epoch 48/100  train_loss=1.0940  train_acc=0.6794  lr=5.32e-04
+    epoch 49/100  train_loss=1.0680  train_acc=0.6871  lr=5.16e-04
+    epoch 50/100  train_loss=1.0660  train_acc=0.6919  lr=5.01e-04
+    epoch 50/100  val_loss=13.1443  val_acc=0.1471  val_R@1=0.3296  val_R@5=0.5618  val_mAP@5=0.4046
+    epoch 51/100  train_loss=1.0673  train_acc=0.6847  lr=4.85e-04
+    epoch 52/100  train_loss=1.0620  train_acc=0.6890  lr=4.69e-04
+    epoch 53/100  train_loss=1.0435  train_acc=0.6975  lr=4.53e-04
+    epoch 54/100  train_loss=1.0516  train_acc=0.6946  lr=4.38e-04
+    epoch 55/100  train_loss=1.0274  train_acc=0.6951  lr=4.22e-04
+    epoch 56/100  train_loss=1.0099  train_acc=0.7045  lr=4.07e-04
+    epoch 57/100  train_loss=1.0199  train_acc=0.6999  lr=3.92e-04
+    epoch 58/100  train_loss=1.0125  train_acc=0.7013  lr=3.76e-04
+    epoch 59/100  train_loss=1.0057  train_acc=0.7027  lr=3.61e-04
+    epoch 60/100  train_loss=0.9744  train_acc=0.7083  lr=3.46e-04
+    epoch 60/100  val_loss=12.2414  val_acc=0.1560  val_R@1=0.3071  val_R@5=0.5281  val_mAP@5=0.3795
+    epoch 61/100  train_loss=0.9793  train_acc=0.7123  lr=3.31e-04
+    epoch 62/100  train_loss=0.9681  train_acc=0.7161  lr=3.17e-04
+    epoch 63/100  train_loss=0.9754  train_acc=0.7130  lr=3.02e-04
+    epoch 64/100  train_loss=0.9507  train_acc=0.7188  lr=2.88e-04
+    epoch 65/100  train_loss=0.9608  train_acc=0.7252  lr=2.74e-04
+    epoch 66/100  train_loss=0.9496  train_acc=0.7166  lr=2.60e-04
+    epoch 67/100  train_loss=0.9369  train_acc=0.7217  lr=2.46e-04
+    epoch 68/100  train_loss=0.9238  train_acc=0.7271  lr=2.33e-04
+    epoch 69/100  train_loss=0.9459  train_acc=0.7262  lr=2.20e-04
+    epoch 70/100  train_loss=0.9229  train_acc=0.7306  lr=2.07e-04
+    epoch 70/100  val_loss=12.1028  val_acc=0.1665  val_R@1=0.3034  val_R@5=0.5506  val_mAP@5=0.3736
+    epoch 71/100  train_loss=0.9248  train_acc=0.7322  lr=1.94e-04
+    epoch 72/100  train_loss=0.9152  train_acc=0.7297  lr=1.82e-04
+    epoch 73/100  train_loss=0.9076  train_acc=0.7335  lr=1.70e-04
+    epoch 74/100  train_loss=0.8931  train_acc=0.7356  lr=1.59e-04
+    epoch 75/100  train_loss=0.9158  train_acc=0.7276  lr=1.47e-04
+    epoch 76/100  train_loss=0.8857  train_acc=0.7365  lr=1.36e-04
+    epoch 77/100  train_loss=0.8985  train_acc=0.7350  lr=1.26e-04
+    epoch 78/100  train_loss=0.8829  train_acc=0.7447  lr=1.16e-04
+    epoch 79/100  train_loss=0.8773  train_acc=0.7360  lr=1.06e-04
+    epoch 80/100  train_loss=0.8861  train_acc=0.7383  lr=9.64e-05
+    epoch 80/100  val_loss=1.3854  val_acc=0.5948  val_R@1=0.3745  val_R@5=0.5805  val_mAP@5=0.4330 ★
+    epoch 81/100  train_loss=0.8472  train_acc=0.7463  lr=8.74e-05
+    epoch 82/100  train_loss=0.8422  train_acc=0.7518  lr=7.88e-05
+    epoch 83/100  train_loss=0.8850  train_acc=0.7416  lr=7.06e-05
+    epoch 84/100  train_loss=0.8770  train_acc=0.7431  lr=6.28e-05
+    epoch 85/100  train_loss=0.8582  train_acc=0.7482  lr=5.54e-05
+    epoch 86/100  train_loss=0.8560  train_acc=0.7458  lr=4.85e-05
+    epoch 87/100  train_loss=0.8484  train_acc=0.7470  lr=4.21e-05
+    epoch 88/100  train_loss=0.8707  train_acc=0.7435  lr=3.61e-05
+    epoch 89/100  train_loss=0.8627  train_acc=0.7459  lr=3.05e-05
+    epoch 90/100  train_loss=0.8455  train_acc=0.7472  lr=2.54e-05
+    epoch 90/100  val_loss=1.0874  val_acc=0.6738  val_R@1=0.3745  val_R@5=0.5655  val_mAP@5=0.4366
+    epoch 91/100  train_loss=0.8555  train_acc=0.7461  lr=2.08e-05
+    epoch 92/100  train_loss=0.8330  train_acc=0.7519  lr=1.67e-05
+    epoch 93/100  train_loss=0.8418  train_acc=0.7538  lr=1.30e-05
+    epoch 94/100  train_loss=0.8485  train_acc=0.7425  lr=9.85e-06
+    epoch 95/100  train_loss=0.8491  train_acc=0.7468  lr=7.15e-06
+    epoch 96/100  train_loss=0.8374  train_acc=0.7473  lr=4.94e-06
+    epoch 97/100  train_loss=0.8499  train_acc=0.7458  lr=3.22e-06
+    epoch 98/100  train_loss=0.8562  train_acc=0.7501  lr=1.99e-06
+    epoch 99/100  train_loss=0.8313  train_acc=0.7537  lr=1.25e-06
+    epoch 100/100  train_loss=0.8260  train_acc=0.7556  lr=1.00e-06
+    epoch 100/100  val_loss=0.8843  val_acc=0.7484  val_R@1=0.3783  val_R@5=0.5843  val_mAP@5=0.4426 ★
+  Restored best encoder (val_R@1=0.3783)
+  Building MN40 database (shared classes)…
+  θ=  0.0°  R@1=0.378  R@5=0.584  mAP@5=0.443
+  θ= 30.0°  R@1=0.382  R@5=0.569  mAP@5=0.437
+  θ= 60.0°  R@1=0.360  R@5=0.573  mAP@5=0.431
+  θ= 90.0°  R@1=0.371  R@5=0.573  mAP@5=0.438
+  θ=120.0°  R@1=0.393  R@5=0.577  mAP@5=0.451
+  θ=150.0°  R@1=0.375  R@5=0.581  mAP@5=0.445
+  θ=180.0°  R@1=0.367  R@5=0.577  mAP@5=0.435
+
+Results saved → /home/grad/smenon/retrieval_paper/outputs/exp4_risa_old_100ep.json
+
+======================================================================
+CROSS-DATASET TRANSFER — MN40 (train) → ScanObjectNN (query)
+Model                    R@1 (0°)  R@1 (90°)  R@1 (180°)     Drop
+-----------------------------------------------------------------
+RISA                        0.378      0.371       0.367    0.011
+=== Both complete ===

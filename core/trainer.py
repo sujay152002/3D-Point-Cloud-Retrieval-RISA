@@ -24,6 +24,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    _TB_AVAILABLE = True
+except ImportError:
+    _TB_AVAILABLE = False
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -230,6 +236,12 @@ class Trainer:
 
         best_primary_metric = None
 
+        tb_writer = None
+        if _TB_AVAILABLE:
+            tb_log_dir = Path("runs") / f"{task}_{encoder_name}_{dataset_name}"
+            tb_writer = SummaryWriter(log_dir=str(tb_log_dir))
+            logger.info(f"  TensorBoard: {tb_log_dir}")
+
         for epoch in range(epochs):
             if task == "reconstruction":
                 encoder.eval()
@@ -237,13 +249,25 @@ class Trainer:
                 encoder.train()
             decoder.train()
 
-            train_loss = self._train_epoch(
+            train_loss, grad_norm, grad_snapshot = self._train_epoch(
                 task, encoder, decoder, train_loader,
                 optimizer, device, verbose, epoch, epochs,
             )
             scheduler.step()
+            current_lr = scheduler.get_last_lr()[0]
 
             epoch_record: dict = {"epoch": epoch + 1, "train_loss": train_loss}
+
+            if tb_writer is not None:
+                tb_writer.add_scalar("train/loss", train_loss, epoch + 1)
+                tb_writer.add_scalar("train/lr", current_lr, epoch + 1)
+                tb_writer.add_scalar("train/grad_norm", grad_norm, epoch + 1)
+                if (epoch + 1) % 10 == 0:
+                    for name, param in encoder.named_parameters():
+                        if param.requires_grad:
+                            tb_writer.add_histogram(f"params/{name}", param.data, epoch + 1)
+                    for name, grad in grad_snapshot.items():
+                        tb_writer.add_histogram(f"grads/{name}", grad, epoch + 1)
 
             if (epoch + 1) % 10 == 0 or epoch == epochs - 1:
                 val_metrics = self._evaluate(
@@ -252,6 +276,14 @@ class Trainer:
                 )
                 epoch_record["val_metrics"] = val_metrics
                 cleanup_cuda_memory(verbose=False)
+
+                if tb_writer is not None:
+                    for metric_name, metric_val in val_metrics.items():
+                        if metric_name == "per_class_iou" and isinstance(metric_val, dict):
+                            for cls_id, iou_val in metric_val.items():
+                                tb_writer.add_scalar(f"val/iou_class_{cls_id}", iou_val, epoch + 1)
+                        elif isinstance(metric_val, (int, float)):
+                            tb_writer.add_scalar(f"val/{metric_name}", metric_val, epoch + 1)
 
                 primary = self._primary_metric(task, val_metrics)
                 is_best = (
@@ -269,18 +301,28 @@ class Trainer:
                 torch.save(encoder.state_dict(), weights_dir / f"encoder_{ckpt}.pt")
                 torch.save(decoder.state_dict(), weights_dir / f"decoder_{ckpt}.pt")
 
-                lr = scheduler.get_last_lr()[0]
-                self._log_epoch(logger, task, epoch + 1, epochs, train_loss, val_metrics, lr, is_best)
+                self._log_epoch(logger, task, epoch + 1, epochs, train_loss, val_metrics, current_lr, is_best)
 
             results["history"].append(epoch_record)
 
         # Load best checkpoint and evaluate once on held-out test set
-        # Load best checkpoints using map_location to ensure correct device
+        if tb_writer is not None:
+            tb_writer.close()
         encoder.load_state_dict(torch.load(weights_dir / "encoder_best.pt", weights_only=True))
         decoder.load_state_dict(torch.load(weights_dir / "decoder_best.pt", weights_only=True))
         test_metrics = self._evaluate(task, encoder, decoder, test_loader, device, full_dk, eval_rotations)
         results["test"] = test_metrics
         cleanup_cuda_memory(verbose=False)
+
+        if _TB_AVAILABLE:
+            tb_test = SummaryWriter(log_dir=str(tb_log_dir))
+            for metric_name, metric_val in test_metrics.items():
+                if metric_name == "per_class_iou" and isinstance(metric_val, dict):
+                    for cls_id, iou_val in metric_val.items():
+                        tb_test.add_scalar(f"test/iou_class_{cls_id}", iou_val, epochs)
+                elif isinstance(metric_val, (int, float)):
+                    tb_test.add_scalar(f"test/{metric_name}", metric_val, epochs)
+            tb_test.close()
 
         results_fp = save_directory / "results.json"
         with open(results_fp, "w") as f:
@@ -361,8 +403,10 @@ class Trainer:
 
     def _train_epoch(self, task, encoder, decoder, loader, optimizer, device, verbose, epoch, epochs):
         total_loss  = 0.0
+        total_gnorm = 0.0
         num_batches = 0
         params      = [p for p in list(encoder.parameters()) + list(decoder.parameters()) if p.requires_grad]
+        last_grad_snapshot: dict = {}  # name -> grad tensor, captured after last backward
 
         pbar = tqdm(
             loader,
@@ -382,18 +426,24 @@ class Trainer:
             optimizer.zero_grad()
             loss = self._compute_loss(task, encoder, decoder, points, labels, device, obj_labels if task == "segmentation" else None)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(params, self.GRAD_CLIP)
+            gnorm = torch.nn.utils.clip_grad_norm_(params, self.GRAD_CLIP)
+            # Snapshot gradients before optimizer zeros them (last batch wins)
+            if (epoch + 1) % 10 == 0:
+                for name, param in encoder.named_parameters():
+                    if param.requires_grad and param.grad is not None:
+                        last_grad_snapshot[name] = param.grad.detach().cpu().clone()
             optimizer.step()
 
             total_loss  += loss.item()
+            total_gnorm += gnorm.item() if hasattr(gnorm, "item") else float(gnorm)
             num_batches += 1
-            pbar.set_postfix({"loss": f"{total_loss / num_batches:.4f}"})
+            pbar.set_postfix({"loss": f"{total_loss / num_batches:.4f}", "gnorm": f"{total_gnorm / num_batches:.3f}"})
             
             # Memory cleanup every 10 batches
             maybe_cleanup_after_batch(batch_idx, cleanup_interval=10, verbose=False)
 
         pbar.close()
-        return total_loss / max(num_batches, 1)
+        return total_loss / max(num_batches, 1), total_gnorm / max(num_batches, 1), last_grad_snapshot
 
     def _compute_loss(self, task, encoder, decoder, points, labels, device, obj_labels=None):
         if task == "denoise":

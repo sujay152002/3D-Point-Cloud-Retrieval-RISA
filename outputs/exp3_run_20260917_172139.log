@@ -1,0 +1,580 @@
+Device: cuda
+✓ Loaded ShapeNet test: 3370 samples (per-point labels: True)
+
+============================================================
+Condition: A_RISA
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+[W917 17:21:40.382488682 Context.cpp:424] Warning: torch.backends.cuda.preferred_linalg_library is an experimental feature. If you see any error or unexpected behavior when this flag is set please file an issue on GitHub. (function operator())
+    epoch 1/100
+    epoch 2/100
+    epoch 3/100
+    epoch 4/100
+    epoch 5/100
+    epoch 6/100
+    epoch 7/100
+    epoch 8/100
+    epoch 9/100
+    epoch 10/100
+    epoch 11/100
+    epoch 12/100
+    epoch 13/100
+    epoch 14/100
+    epoch 15/100
+    epoch 16/100
+    epoch 17/100
+    epoch 18/100
+    epoch 19/100
+    epoch 20/100
+    epoch 21/100
+    epoch 22/100
+    epoch 23/100
+    epoch 24/100
+    epoch 25/100
+    epoch 26/100
+    epoch 27/100
+    epoch 28/100
+    epoch 29/100
+    epoch 30/100
+    epoch 31/100
+    epoch 32/100
+    epoch 33/100
+    epoch 34/100
+    epoch 35/100
+    epoch 36/100
+    epoch 37/100
+    epoch 38/100
+    epoch 39/100
+    epoch 40/100
+    epoch 41/100
+    epoch 42/100
+    epoch 43/100
+    epoch 44/100
+    epoch 45/100
+    epoch 46/100
+    epoch 47/100
+    epoch 48/100
+    epoch 49/100
+    epoch 50/100
+    epoch 51/100
+    epoch 52/100
+    epoch 53/100
+    epoch 54/100
+    epoch 55/100
+    epoch 56/100
+    epoch 57/100
+    epoch 58/100
+    epoch 59/100
+    epoch 60/100
+    epoch 61/100
+    epoch 62/100
+    epoch 63/100
+    epoch 64/100
+    epoch 65/100
+    epoch 66/100
+    epoch 67/100
+    epoch 68/100
+    epoch 69/100
+    epoch 70/100
+    epoch 71/100
+    epoch 72/100
+    epoch 73/100
+    epoch 74/100
+    epoch 75/100
+    epoch 76/100
+    epoch 77/100
+    epoch 78/100
+    epoch 79/100
+    epoch 80/100
+    epoch 81/100
+    epoch 82/100
+    epoch 83/100
+    epoch 84/100
+    epoch 85/100
+    epoch 86/100
+    epoch 87/100
+    epoch 88/100
+    epoch 89/100
+    epoch 90/100
+    epoch 91/100
+    epoch 92/100
+    epoch 93/100
+    epoch 94/100
+    epoch 95/100
+    epoch 96/100
+    epoch 97/100
+    epoch 98/100
+    epoch 99/100
+    epoch 100/100
+  θ=  0.0°  R@1=0.953  R@5=0.977  mAP@5=0.959
+  θ= 15.0°  R@1=0.953  R@5=0.977  mAP@5=0.958
+  θ= 30.0°  R@1=0.952  R@5=0.977  mAP@5=0.957
+  θ= 45.0°  R@1=0.953  R@5=0.977  mAP@5=0.958
+  θ= 60.0°  R@1=0.954  R@5=0.978  mAP@5=0.959
+  θ= 90.0°  R@1=0.953  R@5=0.976  mAP@5=0.958
+  θ=120.0°  R@1=0.953  R@5=0.978  mAP@5=0.958
+  θ=150.0°  R@1=0.950  R@5=0.978  mAP@5=0.958
+  θ=180.0°  R@1=0.950  R@5=0.977  mAP@5=0.958
+
+============================================================
+Condition: B_DGCNN_SO3
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100
+    epoch 2/100
+    epoch 3/100
+    epoch 4/100
+    epoch 5/100
+    epoch 6/100
+    epoch 7/100
+    epoch 8/100
+    epoch 9/100
+    epoch 10/100
+    epoch 11/100
+    epoch 12/100
+    epoch 13/100
+    epoch 14/100
+    epoch 15/100
+    epoch 16/100
+    epoch 17/100
+    epoch 18/100
+    epoch 19/100
+    epoch 20/100
+    epoch 21/100
+    epoch 22/100
+    epoch 23/100
+    epoch 24/100
+    epoch 25/100
+    epoch 26/100
+    epoch 27/100
+    epoch 28/100
+    epoch 29/100
+    epoch 30/100
+    epoch 31/100
+    epoch 32/100
+    epoch 33/100
+    epoch 34/100
+    epoch 35/100
+    epoch 36/100
+    epoch 37/100
+    epoch 38/100
+    epoch 39/100
+    epoch 40/100
+    epoch 41/100
+    epoch 42/100
+    epoch 43/100
+    epoch 44/100
+    epoch 45/100
+    epoch 46/100
+    epoch 47/100
+    epoch 48/100
+    epoch 49/100
+    epoch 50/100
+    epoch 51/100
+    epoch 52/100
+    epoch 53/100
+    epoch 54/100
+    epoch 55/100
+    epoch 56/100
+    epoch 57/100
+    epoch 58/100
+    epoch 59/100
+    epoch 60/100
+    epoch 61/100
+    epoch 62/100
+    epoch 63/100
+    epoch 64/100
+    epoch 65/100
+    epoch 66/100
+    epoch 67/100
+    epoch 68/100
+    epoch 69/100
+    epoch 70/100
+    epoch 71/100
+    epoch 72/100
+    epoch 73/100
+    epoch 74/100
+    epoch 75/100
+    epoch 76/100
+    epoch 77/100
+    epoch 78/100
+    epoch 79/100
+    epoch 80/100
+    epoch 81/100
+    epoch 82/100
+    epoch 83/100
+    epoch 84/100
+    epoch 85/100
+    epoch 86/100
+    epoch 87/100
+    epoch 88/100
+    epoch 89/100
+    epoch 90/100
+    epoch 91/100
+    epoch 92/100
+    epoch 93/100
+    epoch 94/100
+    epoch 95/100
+    epoch 96/100
+    epoch 97/100
+    epoch 98/100
+    epoch 99/100
+    epoch 100/100
+  θ=  0.0°  R@1=0.952  R@5=0.985  mAP@5=0.957
+  θ= 15.0°  R@1=0.952  R@5=0.986  mAP@5=0.956
+  θ= 30.0°  R@1=0.941  R@5=0.984  mAP@5=0.950
+  θ= 45.0°  R@1=0.931  R@5=0.980  mAP@5=0.941
+  θ= 60.0°  R@1=0.923  R@5=0.976  mAP@5=0.935
+  θ= 90.0°  R@1=0.900  R@5=0.967  mAP@5=0.918
+  θ=120.0°  R@1=0.901  R@5=0.970  mAP@5=0.915
+  θ=150.0°  R@1=0.895  R@5=0.974  mAP@5=0.915
+  θ=180.0°  R@1=0.900  R@5=0.973  mAP@5=0.917
+
+============================================================
+Condition: C_DGCNN_TTA
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100
+    epoch 2/100
+    epoch 3/100
+    epoch 4/100
+    epoch 5/100
+    epoch 6/100
+    epoch 7/100
+    epoch 8/100
+    epoch 9/100
+    epoch 10/100
+    epoch 11/100
+    epoch 12/100
+    epoch 13/100
+    epoch 14/100
+    epoch 15/100
+    epoch 16/100
+    epoch 17/100
+    epoch 18/100
+    epoch 19/100
+    epoch 20/100
+    epoch 21/100
+    epoch 22/100
+    epoch 23/100
+    epoch 24/100
+    epoch 25/100
+    epoch 26/100
+    epoch 27/100
+    epoch 28/100
+    epoch 29/100
+    epoch 30/100
+    epoch 31/100
+    epoch 32/100
+    epoch 33/100
+    epoch 34/100
+    epoch 35/100
+    epoch 36/100
+    epoch 37/100
+    epoch 38/100
+    epoch 39/100
+    epoch 40/100
+    epoch 41/100
+    epoch 42/100
+    epoch 43/100
+    epoch 44/100
+    epoch 45/100
+    epoch 46/100
+    epoch 47/100
+    epoch 48/100
+    epoch 49/100
+    epoch 50/100
+    epoch 51/100
+    epoch 52/100
+    epoch 53/100
+    epoch 54/100
+    epoch 55/100
+    epoch 56/100
+    epoch 57/100
+    epoch 58/100
+    epoch 59/100
+    epoch 60/100
+    epoch 61/100
+    epoch 62/100
+    epoch 63/100
+    epoch 64/100
+    epoch 65/100
+    epoch 66/100
+    epoch 67/100
+    epoch 68/100
+    epoch 69/100
+    epoch 70/100
+    epoch 71/100
+    epoch 72/100
+    epoch 73/100
+    epoch 74/100
+    epoch 75/100
+    epoch 76/100
+    epoch 77/100
+    epoch 78/100
+    epoch 79/100
+    epoch 80/100
+    epoch 81/100
+    epoch 82/100
+    epoch 83/100
+    epoch 84/100
+    epoch 85/100
+    epoch 86/100
+    epoch 87/100
+    epoch 88/100
+    epoch 89/100
+    epoch 90/100
+    epoch 91/100
+    epoch 92/100
+    epoch 93/100
+    epoch 94/100
+    epoch 95/100
+    epoch 96/100
+    epoch 97/100
+    epoch 98/100
+    epoch 99/100
+    epoch 100/100
+  θ=  0.0°  R@1=0.721  R@5=0.893  mAP@5=0.768
+  θ= 15.0°  R@1=0.715  R@5=0.897  mAP@5=0.767
+  θ= 30.0°  R@1=0.713  R@5=0.892  mAP@5=0.766
+  θ= 45.0°  R@1=0.718  R@5=0.892  mAP@5=0.765
+  θ= 60.0°  R@1=0.707  R@5=0.893  mAP@5=0.760
+  θ= 90.0°  R@1=0.705  R@5=0.889  mAP@5=0.757
+  θ=120.0°  R@1=0.706  R@5=0.887  mAP@5=0.752
+  θ=150.0°  R@1=0.693  R@5=0.892  mAP@5=0.752
+  θ=180.0°  R@1=0.711  R@5=0.888  mAP@5=0.759
+
+============================================================
+Condition: D_RISA_XYZ
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100
+    epoch 2/100
+    epoch 3/100
+    epoch 4/100
+    epoch 5/100
+    epoch 6/100
+    epoch 7/100
+    epoch 8/100
+    epoch 9/100
+    epoch 10/100
+    epoch 11/100
+    epoch 12/100
+    epoch 13/100
+    epoch 14/100
+    epoch 15/100
+    epoch 16/100
+    epoch 17/100
+    epoch 18/100
+    epoch 19/100
+    epoch 20/100
+    epoch 21/100
+    epoch 22/100
+    epoch 23/100
+    epoch 24/100
+    epoch 25/100
+    epoch 26/100
+    epoch 27/100
+    epoch 28/100
+    epoch 29/100
+    epoch 30/100
+    epoch 31/100
+    epoch 32/100
+    epoch 33/100
+    epoch 34/100
+    epoch 35/100
+    epoch 36/100
+    epoch 37/100
+    epoch 38/100
+    epoch 39/100
+    epoch 40/100
+    epoch 41/100
+    epoch 42/100
+    epoch 43/100
+    epoch 44/100
+    epoch 45/100
+    epoch 46/100
+    epoch 47/100
+    epoch 48/100
+    epoch 49/100
+    epoch 50/100
+    epoch 51/100
+    epoch 52/100
+    epoch 53/100
+    epoch 54/100
+    epoch 55/100
+    epoch 56/100
+    epoch 57/100
+    epoch 58/100
+    epoch 59/100
+    epoch 60/100
+    epoch 61/100
+    epoch 62/100
+    epoch 63/100
+    epoch 64/100
+    epoch 65/100
+    epoch 66/100
+    epoch 67/100
+    epoch 68/100
+    epoch 69/100
+    epoch 70/100
+    epoch 71/100
+    epoch 72/100
+    epoch 73/100
+    epoch 74/100
+    epoch 75/100
+    epoch 76/100
+    epoch 77/100
+    epoch 78/100
+    epoch 79/100
+    epoch 80/100
+    epoch 81/100
+    epoch 82/100
+    epoch 83/100
+    epoch 84/100
+    epoch 85/100
+    epoch 86/100
+    epoch 87/100
+    epoch 88/100
+    epoch 89/100
+    epoch 90/100
+    epoch 91/100
+    epoch 92/100
+    epoch 93/100
+    epoch 94/100
+    epoch 95/100
+    epoch 96/100
+    epoch 97/100
+    epoch 98/100
+    epoch 99/100
+    epoch 100/100
+  θ=  0.0°  R@1=0.880  R@5=0.956  mAP@5=0.898
+  θ= 15.0°  R@1=0.837  R@5=0.942  mAP@5=0.868
+  θ= 30.0°  R@1=0.724  R@5=0.871  mAP@5=0.766
+  θ= 45.0°  R@1=0.630  R@5=0.798  mAP@5=0.683
+  θ= 60.0°  R@1=0.576  R@5=0.743  mAP@5=0.629
+  θ= 90.0°  R@1=0.409  R@5=0.591  mAP@5=0.465
+  θ=120.0°  R@1=0.372  R@5=0.563  mAP@5=0.433
+  θ=150.0°  R@1=0.462  R@5=0.616  mAP@5=0.511
+  θ=180.0°  R@1=0.582  R@5=0.696  mAP@5=0.617
+
+============================================================
+Condition: E_RISA_NO_TOKEN
+✓ Loaded ShapeNet train: 13476 samples (per-point labels: True)
+    epoch 1/100
+    epoch 2/100
+    epoch 3/100
+    epoch 4/100
+    epoch 5/100
+    epoch 6/100
+    epoch 7/100
+    epoch 8/100
+    epoch 9/100
+    epoch 10/100
+    epoch 11/100
+    epoch 12/100
+    epoch 13/100
+    epoch 14/100
+    epoch 15/100
+    epoch 16/100
+    epoch 17/100
+    epoch 18/100
+    epoch 19/100
+    epoch 20/100
+    epoch 21/100
+    epoch 22/100
+    epoch 23/100
+    epoch 24/100
+    epoch 25/100
+    epoch 26/100
+    epoch 27/100
+    epoch 28/100
+    epoch 29/100
+    epoch 30/100
+    epoch 31/100
+    epoch 32/100
+    epoch 33/100
+    epoch 34/100
+    epoch 35/100
+    epoch 36/100
+    epoch 37/100
+    epoch 38/100
+    epoch 39/100
+    epoch 40/100
+    epoch 41/100
+    epoch 42/100
+    epoch 43/100
+    epoch 44/100
+    epoch 45/100
+    epoch 46/100
+    epoch 47/100
+    epoch 48/100
+    epoch 49/100
+    epoch 50/100
+    epoch 51/100
+    epoch 52/100
+    epoch 53/100
+    epoch 54/100
+    epoch 55/100
+    epoch 56/100
+    epoch 57/100
+    epoch 58/100
+    epoch 59/100
+    epoch 60/100
+    epoch 61/100
+    epoch 62/100
+    epoch 63/100
+    epoch 64/100
+    epoch 65/100
+    epoch 66/100
+    epoch 67/100
+    epoch 68/100
+    epoch 69/100
+    epoch 70/100
+    epoch 71/100
+    epoch 72/100
+    epoch 73/100
+    epoch 74/100
+    epoch 75/100
+    epoch 76/100
+    epoch 77/100
+    epoch 78/100
+    epoch 79/100
+    epoch 80/100
+    epoch 81/100
+    epoch 82/100
+    epoch 83/100
+    epoch 84/100
+    epoch 85/100
+    epoch 86/100
+    epoch 87/100
+    epoch 88/100
+    epoch 89/100
+    epoch 90/100
+    epoch 91/100
+    epoch 92/100
+    epoch 93/100
+    epoch 94/100
+    epoch 95/100
+    epoch 96/100
+    epoch 97/100
+    epoch 98/100
+    epoch 99/100
+    epoch 100/100
+  θ=  0.0°  R@1=0.931  R@5=0.977  mAP@5=0.943
+  θ= 15.0°  R@1=0.931  R@5=0.976  mAP@5=0.941
+  θ= 30.0°  R@1=0.930  R@5=0.977  mAP@5=0.942
+  θ= 45.0°  R@1=0.932  R@5=0.974  mAP@5=0.942
+  θ= 60.0°  R@1=0.934  R@5=0.976  mAP@5=0.942
+  θ= 90.0°  R@1=0.929  R@5=0.977  mAP@5=0.942
+  θ=120.0°  R@1=0.931  R@5=0.975  mAP@5=0.942
+  θ=150.0°  R@1=0.930  R@5=0.976  mAP@5=0.941
+  θ=180.0°  R@1=0.933  R@5=0.975  mAP@5=0.942
+
+Results saved → /home/grad/smenon/retrieval_paper/outputs/exp3_ablation.json
+
+======================================================================
+ABLATION SUMMARY — shapenet — Recall@1 at key angles
+Condition                  0°    45°    90°   180°
+--------------------------------------------------
+A_RISA                  0.953  0.953  0.953  0.950
+B_DGCNN_SO3             0.952  0.931  0.900  0.900
+C_DGCNN_TTA             0.721  0.718  0.705  0.711
+D_RISA_XYZ              0.880  0.630  0.409  0.582
+E_RISA_NO_TOKEN         0.931  0.932  0.929  0.933

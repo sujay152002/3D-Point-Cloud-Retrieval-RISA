@@ -1,0 +1,32 @@
+Device: cuda
+✓ Loaded ShapeNet test: 3370 samples (per-point labels: True)
+
+==================================================
+Model: PointNet++
+  Loaded checkpoint: outputs/checkpoints/20260916_152015_PointNet2Encoder.pt
+  Collecting encodings (8 classes × 5 shapes × 32 rotations)…
+
+==================================================
+Model: DGCNN
+  Loaded checkpoint: outputs/checkpoints/20260916_172316_DGCNNEncoder.pt
+  Collecting encodings (8 classes × 5 shapes × 32 rotations)…
+
+==================================================
+Model: DiPVNet
+  Loaded checkpoint: outputs/checkpoints/20260917_052229_DiPVNetEncoder.pt
+  Collecting encodings (8 classes × 5 shapes × 32 rotations)…
+
+==================================================
+Model: RINet
+  Loaded checkpoint: outputs/checkpoints/20260917_070444_RINet.pt
+  Collecting encodings (8 classes × 5 shapes × 32 rotations)…
+
+==================================================
+Model: RISA
+  Loaded checkpoint: outputs/checkpoints/20260917_132900_RotationInvariantSparseAttention.pt
+  Collecting encodings (8 classes × 5 shapes × 32 rotations)…
+[W918 09:26:13.054020967 Context.cpp:424] Warning: torch.backends.cuda.preferred_linalg_library is an experimental feature. If you see any error or unexpected behavior when this flag is set please file an issue on GitHub. (function operator())
+
+Running t-SNE and plotting…
+  Saved → /home/grad/smenon/retrieval_paper/plots/exp2_semantic_collapse_shapenet.png
+Raw encodings saved → /home/grad/smenon/retrieval_paper/outputs/exp2_semantic_collapse_shapenet.json

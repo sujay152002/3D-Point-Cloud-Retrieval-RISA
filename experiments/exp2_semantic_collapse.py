@@ -41,11 +41,11 @@ CLASS_COLORS = [
 ]
 
 
-def _build_encoder(name):
+def _build_encoder(name, checkpoint_dir=None):
     from models import (
         DGCNNEncoder, PointMambaEncoder, PointNet2Encoder,
         RotationInvariantSparseAttention, RSCNNEncoder,
-        VNNEncoder, DiPVNetEncoder,
+        VNNEncoder, DiPVNetEncoder, RINet,
     )
     from models.transformer import PointTransformerEncoder
     registry = {
@@ -56,15 +56,26 @@ def _build_encoder(name):
         "DGCNN"           : DGCNNEncoder,
         "VNN"             : VNNEncoder,
         "DiPVNet"         : DiPVNetEncoder,
+        "RINet"           : RINet,
         "RISA"            : RotationInvariantSparseAttention,
     }
-    cls = registry[name]
     if name == "RISA":
-        return RotationInvariantSparseAttention(
+        enc = RotationInvariantSparseAttention(
             encoding_out_dim=512, features_out_dim=256,
             model_dim=256, num_blocks=4,
         )
-    return cls()
+    else:
+        enc = registry[name]()
+    if checkpoint_dir:
+        import glob
+        pattern = str(Path(checkpoint_dir) / f"*_{enc.__class__.__name__}.pt")
+        matches = sorted(glob.glob(pattern))
+        if matches:
+            enc.load_state_dict(torch.load(matches[-1], map_location="cpu"))
+            print(f"  Loaded checkpoint: {matches[-1]}")
+        else:
+            print(f"  WARNING: no checkpoint found for {name} in {checkpoint_dir}")
+    return enc
 
 
 def random_rotation(device):
@@ -121,6 +132,7 @@ def quick_train(encoder, dataset_name, epochs=20, seed=42):
 
 @torch.no_grad()
 def collect_encodings(encoder, dataset, n_classes=8, n_shapes_per_class=5, n_rotations=32):
+    encoder.eval()
     """
     For each of n_classes, pick n_shapes_per_class shapes and encode them
     under n_rotations random SO(3) rotations.
@@ -205,34 +217,69 @@ def plot_tsne(encodings_a, labels_a, name_a,
     print(f"  Saved → {out_path}")
 
 
+def plot_tsne_all(results_dict, dataset_name, out_path, n_classes):
+    """
+    Plot a grid of t-SNE panels, one per model.
+    """
+    models = list(results_dict.keys())
+    n_cols = min(3, len(models))
+    n_rows = (len(models) + n_cols - 1) // n_cols
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6 * n_cols, 5 * n_rows))
+    fig.suptitle(f"Semantic Collapse under SO(3) — {dataset_name}", fontsize=14, fontweight="bold")
+    axes = np.array(axes).flatten()
+
+    for ax, model_name in zip(axes, models):
+        enc, lbl = results_dict[model_name]
+        tsne = TSNE(n_components=2, perplexity=30, random_state=0, max_iter=1000)
+        proj = tsne.fit_transform(enc)
+        for c in range(n_classes):
+            mask = lbl == c
+            ax.scatter(proj[mask, 0], proj[mask, 1],
+                       c=CLASS_COLORS[c % len(CLASS_COLORS)],
+                       s=8, alpha=0.6, label=f"class {c}")
+        ax.set_title(model_name, fontsize=11, fontweight="bold")
+        ax.set_xticks([]); ax.set_yticks([])
+        ax.legend(markerscale=2, fontsize=7, loc="best", ncol=2 if n_classes > 5 else 1)
+
+    for ax in axes[len(models):]:
+        ax.set_visible(False)
+
+    plt.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close()
+    print(f"  Saved → {out_path}")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_a",    default="RISA",
-                        help="Invariant model (left panel)")
-    parser.add_argument("--model_b",    default="PointNet++",
-                        help="Baseline model (right panel)")
-    parser.add_argument("--dataset",    default="modelnet40")
-    parser.add_argument("--n_classes",  type=int, default=8)
-    parser.add_argument("--n_shapes",   type=int, default=5,
+    parser.add_argument("--models", nargs="+",
+                        default=["PointNet++", "DGCNN", "DiPVNet", "RINet", "RISA"],
+                        help="Models to visualize")
+    parser.add_argument("--dataset",       default="shapenet")
+    parser.add_argument("--n_classes",     type=int, default=8)
+    parser.add_argument("--n_shapes",      type=int, default=5,
                         help="Shapes per class")
-    parser.add_argument("--n_rotations",type=int, default=32,
+    parser.add_argument("--n_rotations",   type=int, default=32,
                         help="SO(3) rotations per shape")
-    parser.add_argument("--epochs",     type=int, default=20)
-    parser.add_argument("--seed",       type=int, default=42)
+    parser.add_argument("--checkpoint_dir", type=str, default=None)
+    parser.add_argument("--epochs",        type=int, default=20)
+    parser.add_argument("--seed",          type=int, default=42)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     print(f"Device: {DEVICE}")
 
-    kwargs   = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
-    test_ds  = get_dataset(args.dataset, split="test", root=DATA_ROOT,
-                           num_points=N_POINTS, **kwargs)
+    kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
+    test_ds = get_dataset(args.dataset, split="test", root=DATA_ROOT,
+                          num_points=N_POINTS, **kwargs)
 
     results = {}
-    for model_name in [args.model_a, args.model_b]:
+    for model_name in args.models:
         print(f"\n{'='*50}\nModel: {model_name}")
-        encoder = _build_encoder(model_name).to(DEVICE)
-        quick_train(encoder, args.dataset, epochs=args.epochs, seed=args.seed)
+        encoder = _build_encoder(model_name, args.checkpoint_dir).to(DEVICE)
+        if not args.checkpoint_dir:
+            quick_train(encoder, args.dataset, epochs=args.epochs, seed=args.seed)
 
         print(f"  Collecting encodings ({args.n_classes} classes × "
               f"{args.n_shapes} shapes × {args.n_rotations} rotations)…")
@@ -248,20 +295,11 @@ def main():
 
     out_path = ROOT / "plots" / f"exp2_semantic_collapse_{args.dataset}.png"
     print("\nRunning t-SNE and plotting…")
-    plot_tsne(
-        results[args.model_a][0], results[args.model_a][1], args.model_a,
-        results[args.model_b][0], results[args.model_b][1], args.model_b,
-        dataset_name=args.dataset,
-        out_path=out_path,
-        n_classes=args.n_classes,
-    )
+    plot_tsne_all(results, dataset_name=args.dataset, out_path=out_path, n_classes=args.n_classes)
 
-    # Save raw encodings for replotting
     save = {
-        args.model_a: {"encodings": results[args.model_a][0].tolist(),
-                       "labels":    results[args.model_a][1].tolist()},
-        args.model_b: {"encodings": results[args.model_b][0].tolist(),
-                       "labels":    results[args.model_b][1].tolist()},
+        m: {"encodings": results[m][0].tolist(), "labels": results[m][1].tolist()}
+        for m in results
     }
     out_json = ROOT / "outputs" / f"exp2_semantic_collapse_{args.dataset}.json"
     out_json.parent.mkdir(parents=True, exist_ok=True)

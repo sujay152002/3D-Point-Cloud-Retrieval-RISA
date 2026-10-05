@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RISA — Rotation-Invariant Sparse Attention Results</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8f9fa; color: #1a1a2e; }
+header { background: #1a1a2e; color: white; padding: 3rem 2rem; text-align: center; }
+header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+header p  { color: #aab4c8; font-size: 1rem; }
+main { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+section { background: white; border-radius: 12px; padding: 2rem; margin-bottom: 2rem;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+h2 { font-size: 1.3rem; color: #1a1a2e; margin-bottom: 0.3rem; }
+.subtitle { color: #666; font-size: 0.9rem; margin-bottom: 1.2rem; }
+.table-wrap { overflow-x: auto; margin-bottom: 1.2rem; }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+caption { text-align: left; font-size: 0.8rem; color: #888; margin-bottom: 0.4rem; }
+th { background: #1a1a2e; color: white; padding: 0.6rem 0.8rem; text-align: left; }
+td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #eee; }
+tr:hover td { background: #f0f4ff; }
+.ai-box { background: #f0f4ff; border-left: 4px solid #4a6cf7; border-radius: 6px;
+           padding: 1rem 1.2rem; margin-top: 0.5rem; }
+.ai-label { font-size: 0.75rem; font-weight: 700; color: #4a6cf7;
+             text-transform: uppercase; letter-spacing: 0.05em; display: block;
+             margin-bottom: 0.4rem; }
+.ai-box p { font-size: 0.92rem; line-height: 1.6; color: #333; }
+footer { text-align: center; padding: 2rem; color: #999; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rotation-Invariant Sparse Attention (RISA)</h1>
+  <p>3D Point Cloud Retrieval — Experiment Results &nbsp;·&nbsp; Generated 2026-10-05 19:39</p>
+</header>
+<main>
+
+<section>
+  <h2>Exp 1 — Cross-Dataset Retrieval</h2>
+  <p class="subtitle">Models trained on ShapeNet, evaluated on ShapeNet and ModelNet40 under SO(3) rotations.</p>
+  <div class='table-wrap'><table><caption>Retrieval R@1 (%) across rotation angles</caption><thead><tr><th>Model</th><th>Dataset</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td>PointNet++</td><td>shapenet</td><td>71.6</td><td>—</td><td>70.2</td><td>70.9</td><td>76.5</td></tr><tr><td>DGCNN</td><td>shapenet</td><td>91.8</td><td>—</td><td>85.3</td><td>82.8</td><td>92.9</td></tr><tr><td>DiPVNet</td><td>shapenet</td><td>85.6</td><td>—</td><td>85.2</td><td>84.8</td><td>88.1</td></tr><tr><td><strong>RISA</strong></td><td><strong>shapenet</strong></td><td><strong>94.8</strong></td><td><strong>—</strong></td><td><strong>94.8</strong></td><td><strong>95.0</strong></td><td><strong>95.7</strong></td></tr></tbody></table></div>
+  <div class="ai-box">
+    <span class="ai-label">&#x2728; AI Analysis</span>
+    <p><em>Set GITHUB_TOKEN to enable AI explanations.</em></p>
+  </div>
+</section>
+
+<section>
+  <h2>Exp 3 — Architecture Ablation (ModelNet40)</h2>
+  <p class="subtitle">Ablation of key RISA components vs. DGCNN baselines on class-level retrieval.</p>
+  <div class='table-wrap'><table><caption>ModelNet40 ablation — R@1 (%) and mAP@5 (%)</caption><thead><tr><th>Condition</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>A_RISA</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.0</strong></td><td><strong>95.9</strong></td></tr><tr><td>B_DGCNN_SO3</td><td>95.2</td><td>93.1</td><td>90.0</td><td>90.0</td><td>95.7</td></tr><tr><td>C_DGCNN_TTA</td><td>72.1</td><td>71.8</td><td>70.5</td><td>71.1</td><td>76.8</td></tr><tr><td>D_RISA_XYZ</td><td>88.0</td><td>63.0</td><td>40.9</td><td>58.2</td><td>89.8</td></tr><tr><td>E_RISA_NO_TOKEN</td><td>93.1</td><td>93.2</td><td>92.9</td><td>93.3</td><td>94.3</td></tr></tbody></table></div>
+  <div class="ai-box">
+    <span class="ai-label">&#x2728; AI Analysis</span>
+    <p><em>Set GITHUB_TOKEN to enable AI explanations.</em></p>
+  </div>
+</section>
+
+<section>
+  <h2>Exp 4 — Perceiver vs Standard RISA (Cross-Dataset Transfer)</h2>
+  <p class="subtitle">Comparing perceiver=True vs perceiver=False on ModelNet40→ScanObjectNN transfer.</p>
+  <div class='table-wrap'><table><caption>Cross-dataset transfer — ModelNet40 → ScanObjectNN</caption><thead><tr><th>Variant</th><th>R@1 0°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>RISA (perceiver=False)</strong></td><td><strong>37.8</strong></td><td><strong>37.1</strong></td><td><strong>36.7</strong></td><td><strong>44.3</strong></td></tr><tr><td>RISA (perceiver=True)</td><td>34.1</td><td>34.8</td><td>35.6</td><td>40.5</td></tr></tbody></table></div>
+  <div class="ai-box">
+    <span class="ai-label">&#x2728; AI Analysis</span>
+    <p><em>Set GITHUB_TOKEN to enable AI explanations.</em></p>
+  </div>
+</section>
+
+<section>
+  <h2>Exp 8 — Part-Level Retrieval (ShapeNet)</h2>
+  <p class="subtitle">Part-aware retrieval on ShapeNet 16-class dataset under rotation.</p>
+  <div class='table-wrap'><table><caption>ShapeNet part retrieval</caption><thead><tr><th>Method</th><th>R@1</th><th>class mAP@5</th><th>part mAP@5</th></tr></thead><tbody><tr><td>3D-SIFT-InvIndex</td><td>—</td><td>31.0</td><td>30.9</td></tr><tr><td>global_baselines</td><td>—</td><td>—</td><td>—</td></tr><tr><td>attribute_words</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div>
+  <div class="ai-box">
+    <span class="ai-label">&#x2728; AI Analysis</span>
+    <p><em>Set GITHUB_TOKEN to enable AI explanations.</em></p>
+  </div>
+</section>
+
+<section>
+  <h2>Exp 10 — Geometric Prior Point Selection Ablation</h2>
+  <p class="subtitle">Which rotation-invariant prior best selects K=256 informative points from N=1024?</p>
+  <p><em>Exp10 still running — rerun generate_site.py when complete.</em></p>
+  <div class="ai-box">
+    <span class="ai-label">&#x2728; AI Analysis</span>
+    <p></p>
+  </div>
+</section>
+
+</main>
+<footer>Generated by generate_site.py · sujay152002</footer>
+</body>
+</html>
