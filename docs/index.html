@@ -1,10 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>RISA — 3D Point Cloud Retrieval Results</title>
-<style>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>RISA — 3D Point Cloud Retrieval Results</title><style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f2f8;color:#1a1a2e}
 header{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);
@@ -14,40 +8,30 @@ header .subtitle{color:#8892b0;font-size:1rem;margin-bottom:1.5rem}
 header .badges{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
 .badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
        color:#ccd6f6;padding:.3rem .8rem;border-radius:20px;font-size:.8rem}
-
-/* tabs */
-.tab-bar{display:flex;gap:.3rem;padding:1.2rem 1.5rem .0rem;
+.tab-bar{display:flex;gap:.3rem;padding:1.2rem 1.5rem 0;
          max-width:1100px;margin:0 auto;flex-wrap:wrap}
 .tab-btn{background:white;border:none;padding:.6rem 1.2rem;border-radius:8px 8px 0 0;
          font-size:.85rem;font-weight:600;color:#666;cursor:pointer;
          border-bottom:3px solid transparent;transition:all .2s}
 .tab-btn:hover{color:#4a6cf7;background:#f0f4ff}
 .tab-btn.active{color:#4a6cf7;border-bottom:3px solid #4a6cf7;background:white}
-
-/* panels */
 .tab-panels{max-width:1100px;margin:0 auto;padding:0 1.5rem 2rem}
 .tab-panel{display:none;background:white;border-radius:0 12px 12px 12px;
            box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden}
 .tab-panel.active{display:block}
-
 .panel-header{padding:2rem 2rem 1.5rem;border-bottom:1px solid #f0f0f0}
 .panel-header h2{font-size:1.4rem;color:#1a1a2e;margin-bottom:.4rem}
 .question{color:#4a6cf7;font-size:.95rem;font-style:italic;margin-bottom:1.2rem}
-
-/* info grid */
 .info-grid{display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.5rem}
 .info-card{background:#f8f9ff;border:1px solid #e8ecff;border-radius:8px;
            padding:.6rem 1rem;min-width:140px}
 .info-label{display:block;font-size:.7rem;font-weight:700;color:#4a6cf7;
             text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem}
 .info-value{font-size:.85rem;color:#333;display:flex;flex-wrap:wrap;gap:.3rem}
-
 .tag{background:#e8ecff;color:#4a6cf7;padding:.15rem .5rem;
      border-radius:4px;font-size:.78rem;font-weight:600}
-
 .panel-body{padding:1.5rem 2rem}
-
-/* table */
+.chart-wrap{margin-bottom:.5rem}
 .tbl-wrap{overflow-x:auto;margin-bottom:1.5rem}
 table{width:100%;border-collapse:collapse;font-size:.87rem}
 caption{text-align:left;font-size:.78rem;color:#999;margin-bottom:.4rem;font-style:italic}
@@ -56,110 +40,18 @@ th{color:white;padding:.65rem .9rem;text-align:left;font-weight:600;font-size:.8
 td{padding:.55rem .9rem;border-bottom:1px solid #f0f0f0;color:#333}
 tbody tr:hover td{background:#f5f7ff}
 tbody tr:last-child td{border-bottom:none}
-
-/* ai box */
 .ai-box{background:linear-gradient(135deg,#f0f4ff,#f8f0ff);
         border-left:4px solid #4a6cf7;border-radius:8px;padding:1.2rem 1.4rem}
 .ai-label{font-size:.72rem;font-weight:800;color:#4a6cf7;text-transform:uppercase;
           letter-spacing:.08em;display:flex;align-items:center;gap:.4rem;margin-bottom:.6rem}
-.ai-label::before{content:'✨'}
 .ai-box p{font-size:.93rem;line-height:1.7;color:#333}
-
 .pending{color:#888;font-style:italic;padding:1rem 0}
 footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
-</style>
-</head>
-<body>
-<header>
-  <h1>Rotation-Invariant Sparse Attention</h1>
-  <p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p>
-  <div class="badges">
-    <span class="badge">📅 2026-10-05 20:26</span>
-    <span class="badge">🔬 5 Experiments</span>
-    <span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span>
-    <span class="badge">⚡ SO(3) Invariant</span>
-  </div>
-</header>
-<div class="tab-bar"><button class="tab-btn active" data-tab="exp1" onclick="showTab('exp1')">Exp 1</button><button class="tab-btn" data-tab="exp3" onclick="showTab('exp3')">Exp 3</button><button class="tab-btn" data-tab="exp4" onclick="showTab('exp4')">Exp 4</button><button class="tab-btn" data-tab="exp8" onclick="showTab('exp8')">Exp 8</button><button class="tab-btn" data-tab="exp10" onclick="showTab('exp10')">Exp 10</button></div>
-<div class="tab-panels">
-<div class="tab-panel" id="exp1">
-  <div class="panel-header">
-    <h2>Exp 1 — Cross-Dataset Retrieval</h2>
-    <p class="question">❓ Do rotation-invariant features generalise across datasets without retraining?</p>
-    <div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>PointNet++</span><span class='tag'>DGCNN</span><span class='tag'>DiPVNet</span><span class='tag'>RISA</span></span></div><div class='info-card'><span class='info-label'>Datasets</span><span class='info-value'><span class='tag'>shapenet</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · R@5 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Cross-entropy on ShapeNet</span></div><div class='info-card'><span class='info-label'>Evaluation</span><span class='info-value'>SO(3) rotations 0°→180°</span></div></div>
-  </div>
-  <div class="panel-body">
-    <div class='tbl-wrap'><table><caption>R@1 (%) and mAP@5 (%) across rotation angles</caption><thead><tr><th>Model</th><th>Dataset</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td>PointNet++</td><td>shapenet</td><td>71.6</td><td>—</td><td>70.2</td><td>70.9</td><td>76.5</td></tr><tr><td>DGCNN</td><td>shapenet</td><td>91.8</td><td>—</td><td>85.3</td><td>82.8</td><td>92.9</td></tr><tr><td>DiPVNet</td><td>shapenet</td><td>85.6</td><td>—</td><td>85.2</td><td>84.8</td><td>88.1</td></tr><tr><td><strong>RISA</strong></td><td><strong>shapenet</strong></td><td><strong>94.8</strong></td><td><strong>—</strong></td><td><strong>94.8</strong></td><td><strong>95.0</strong></td><td><strong>95.7</strong></td></tr></tbody></table></div>
-    <div class="ai-box">
-      <div class="ai-label">Analysis</div>
-      <p>RISA achieves the highest retrieval accuracy with a 94.8% R@1 at 0°, outperforming DGCNN (91.8%), DiPVNet (85.6%), and PointNet++ (71.6%). Since the provided data only includes metrics for the 0° orientation, it is not possible to directly quantify the specific performance drop for each model under rotation from this subset alone. However, the significant performance gap between the top performers and PointNet++ suggests that advanced architectures like RISA and DGCNN likely possess stronger inherent geometric features that may better withstand rotational variations compared to simpler baselines. This indicates that while RISA is the most accurate at the canonical angle, true rotation invariance would require observing how these high scores degrade or remain stable across other angles, which is not fully revealed by the single-point data.</p>
-    </div>
-  </div>
-</div>
-<div class="tab-panel" id="exp3">
-  <div class="panel-header">
-    <h2>Exp 3 — Architecture Ablation</h2>
-    <p class="question">❓ Which architectural components of RISA are essential for rotation-invariant retrieval?</p>
-    <div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA</span><span class='tag'>DGCNN</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ModelNet40</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · R@5 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Cross-entropy, 100 epochs</span></div><div class='info-card'><span class='info-label'>Conditions</span><span class='info-value'>5 ablation conditions</span></div></div>
-  </div>
-  <div class="panel-body">
-    <div class='tbl-wrap'><table><caption>ModelNet40 class retrieval — R@1 (%) and mAP@5 (%)</caption><thead><tr><th>Condition</th><th>Description</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>A_RISA</strong></td><td><strong>Full RISA model</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.0</strong></td><td><strong>95.9</strong></td></tr><tr><td>B_DGCNN_SO3</td><td>DGCNN + SO(3) augmentation</td><td>95.2</td><td>93.1</td><td>90.0</td><td>90.0</td><td>95.7</td></tr><tr><td>C_DGCNN_TTA</td><td>DGCNN + test-time augmentation</td><td>72.1</td><td>71.8</td><td>70.5</td><td>71.1</td><td>76.8</td></tr><tr><td>D_RISA_XYZ</td><td>RISA with raw XYZ features</td><td>88.0</td><td>63.0</td><td>40.9</td><td>58.2</td><td>89.8</td></tr><tr><td>E_RISA_NO_TOKEN</td><td>RISA without encoding token</td><td>93.1</td><td>93.2</td><td>92.9</td><td>93.3</td><td>94.3</td></tr></tbody></table></div>
-    <div class="ai-box">
-      <div class="ai-label">Analysis</div>
-      <p>The most critical component is the local feature extraction mechanism, as restricting RISA to XYZ coordinates (Condition D) causes a catastrophic 36.8% drop in performance at 180°, indicating that learned geometric features are essential for robustness. While global encoding tokens provide a modest benefit for near-identity views (Condition E), they contribute less significantly to rotational invariance compared to the feature representation itself. Furthermore, the superior performance of RISA over DGCNN with SO3 augmentation (Condition B) suggests that the model’s architectural design for handling rotation is more effective than relying solely on data augmentation strategies.</p>
-    </div>
-  </div>
-</div>
-<div class="tab-panel" id="exp4">
-  <div class="panel-header">
-    <h2>Exp 4 — Perceiver vs Standard RISA</h2>
-    <p class="question">❓ Does the perceiver-style attention update strategy improve cross-dataset transfer?</p>
-    <div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA (perceiver=False)</span><span class='tag'>RISA (perceiver=True)</span></span></div><div class='info-card'><span class='info-label'>Train Dataset</span><span class='info-value'><span class='tag'>ModelNet40</span></span></div><div class='info-card'><span class='info-label'>Test Dataset</span><span class='info-value'><span class='tag'>ScanObjectNN</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div></div>
-  </div>
-  <div class="panel-body">
-    <div class='tbl-wrap'><table><caption>Cross-dataset transfer — ModelNet40 → ScanObjectNN</caption><thead><tr><th>Variant</th><th>R@1 0°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>RISA (perceiver=False)</strong></td><td><strong>37.8</strong></td><td><strong>37.1</strong></td><td><strong>36.7</strong></td><td><strong>44.3</strong></td></tr><tr><td>RISA (perceiver=True)</td><td>34.1</td><td>34.8</td><td>35.6</td><td>40.5</td></tr></tbody></table></div>
-    <div class="ai-box">
-      <div class="ai-label">Analysis</div>
-      <p>The `perceiver` flag controls whether the model uses a Perceiver architecture to compress the variable-length point cloud into a fixed-length latent representation, which introduces an additional bottleneck layer compared to the standard transformer or MLP-based variant. The non-perceiver variant transfers better because it retains more granular geometric details and local structural information during encoding, which are critical for distinguishing subtle shape differences across the domain gap between synthetic (ModelNet40) and real-world (ScanObjectNN) scans. In contrast, the Perceiver’s aggressive compression likely discards fine-grained features that are less robust to the noise and irregularities present in real-world data, leading to a slight drop in retrieval accuracy.</p>
-    </div>
-  </div>
-</div>
-<div class="tab-panel" id="exp8">
-  <div class="panel-header">
-    <h2>Exp 8 — Part-Level Retrieval</h2>
-    <p class="question">❓ Can RISA retrieve shapes by part similarity, not just global class?</p>
-    <div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA</span><span class='tag'>DGCNN</span><span class='tag'>PointNet++</span><span class='tag'>DiPVNet</span><span class='tag'>RINet</span><span class='tag'>3D-SIFT</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ShapeNet (16 classes)</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>class mAP@5 · part mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div><div class='info-card'><span class='info-label'>Part Labels</span><span class='info-value'>Back · Seat · Leg · Arm (chair example)</span></div></div>
-  </div>
-  <div class="panel-body">
-    <div class='tbl-wrap'><table><caption>ShapeNet part retrieval — all models</caption><thead><tr><th>Method</th><th>class mAP@5 (%)</th><th>part mAP@5 (%)</th></tr></thead><tbody><tr><td>3D-SIFT-InvIndex</td><td>31.0</td><td>30.9</td></tr><tr><td>PointNet++</td><td>86.3</td><td>86.2</td></tr><tr><td>DGCNN</td><td>89.7</td><td>89.5</td></tr><tr><td>DiPVNet</td><td>86.5</td><td>86.4</td></tr><tr><td>RINet</td><td>86.0</td><td>85.7</td></tr><tr><td><strong>RISA</strong></td><td><strong>93.7</strong></td><td><strong>93.5</strong></td></tr></tbody></table></div>
-    <div class="ai-box">
-      <div class="ai-label">Analysis</div>
-      <p>The significant performance gap between 3D-SIFT-InvIndex and deep learning-based methods highlights the superior ability of learned feature representations to capture complex geometric structures compared to traditional hand-crafted descriptors. Among the deep learning approaches, RISA achieves the highest mAP scores, demonstrating that its specific architectural design for part-level discrimination is more effective than the general point cloud encoders used by DGCNN, PointNet++, DiPVNet, and RINet. The near-identical class_mAP and part_mAP values across all models indicate that successful part retrieval is tightly coupled with accurate global class identification, suggesting that part-aware features effectively inherit and refine the discriminative power of the whole-object context.</p>
-    </div>
-  </div>
-</div>
-<div class="tab-panel" id="exp10">
-  <div class="panel-header">
-    <h2>Exp 10 — Prior Point Selection Ablation</h2>
-    <p class="question">❓ Which geometric prior best selects K=256 informative points from N=1024?</p>
-    <div class='info-grid'><div class='info-card'><span class='info-label'>Model</span><span class='info-value'><span class='tag'>RISA</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ModelNet40</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div><div class='info-card'><span class='info-label'>K / N</span><span class='info-value'>256 / 1024</span></div></div>
-  </div>
-  <div class="panel-body">
-    <p class='pending'>⏳ Exp 10 still running — rerun update_site.sh when complete.</p>
-    <div class="ai-box">
-      <div class="ai-label">Analysis</div>
-      <p><em>Results pending.</em></p>
-    </div>
-  </div>
-</div></div>
-<footer>sujay152002 · Generated by generate_site.py</footer>
-<script>
+</style></head><body><header><h1>Rotation-Invariant Sparse Attention</h1><p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p><div class="badges"><span class="badge">📅 2026-10-05 20:32</span><span class="badge">🔬 5 Experiments</span><span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span><span class="badge">⚡ SO(3) Invariant</span></div></header><div class="tab-bar"><button class="tab-btn active" data-tab="exp1" onclick="showTab('exp1')">Exp 1</button><button class="tab-btn" data-tab="exp3" onclick="showTab('exp3')">Exp 3</button><button class="tab-btn" data-tab="exp4" onclick="showTab('exp4')">Exp 4</button><button class="tab-btn" data-tab="exp8" onclick="showTab('exp8')">Exp 8</button><button class="tab-btn" data-tab="exp10" onclick="showTab('exp10')">Exp 10</button></div><div class="tab-panels"><div class="tab-panel" id="exp1"><div class="panel-header"><h2>Exp 1 — Cross-Dataset Retrieval</h2><p class="question">Do rotation-invariant features generalise across datasets without retraining?</p><div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>PointNet++</span><span class='tag'>DGCNN</span><span class='tag'>DiPVNet</span><span class='tag'>RISA</span></span></div><div class='info-card'><span class='info-label'>Datasets</span><span class='info-value'><span class='tag'>shapenet</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · R@5 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Cross-entropy on ShapeNet</span></div><div class='info-card'><span class='info-label'>Evaluation</span><span class='info-value'>SO(3) rotations 0°→180° (19 angles)</span></div></div></div><div class="panel-body"><div class="chart-wrap"><svg width="560" height="110" style="display:block;margin:.5rem 0 1rem"><g transform="translate(0,20)"><rect x="30" y="-18" width="12" height="3" fill="#4a6cf7"/><text x="45" y="-13" font-size="9" fill="#555">PointNet++</text><rect x="150" y="-18" width="12" height="3" fill="#e74c3c"/><text x="165" y="-13" font-size="9" fill="#555">DGCNN</text><rect x="270" y="-18" width="12" height="3" fill="#2ecc71"/><text x="285" y="-13" font-size="9" fill="#555">DiPVNet</text><rect x="390" y="-18" width="12" height="3" fill="#f39c12"/><text x="405" y="-13" font-size="9" fill="#555">RISA</text><polyline points="30.0,56.9 57.8,58.7 85.6,59.2 113.3,59.5 141.1,60.0 168.9,60.0 196.7,59.7 224.4,59.3 252.2,58.7 280.0,58.6 307.8,59.0 335.6,58.1 363.3,57.6 391.1,57.5 418.9,58.7 446.7,57.8 474.4,57.8 502.2,57.0 530.0,57.7" fill="none" stroke="#4a6cf7" stroke-width="2" stroke-linejoin="round"/><polyline points="30.0,33.9 57.8,34.2 85.6,34.5 113.3,34.8 141.1,36.4 168.9,37.1 196.7,37.7 224.4,38.8 252.2,39.7 280.0,41.3 307.8,41.8 335.6,42.3 363.3,43.8 391.1,44.1 418.9,44.0 446.7,45.1 474.4,44.4 502.2,45.3 530.0,44.1" fill="none" stroke="#e74c3c" stroke-width="2" stroke-linejoin="round"/><polyline points="30.0,40.9 57.8,41.6 85.6,41.5 113.3,41.6 141.1,41.6 168.9,41.5 196.7,41.4 224.4,41.2 252.2,41.3 280.0,41.4 307.8,41.5 335.6,41.6 363.3,41.4 391.1,41.5 418.9,41.4 446.7,41.4 474.4,41.6 502.2,41.4 530.0,41.9" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linejoin="round"/><polyline points="30.0,30.4 57.8,30.2 85.6,30.0 113.3,30.1 141.1,30.1 168.9,30.1 196.7,30.3 224.4,30.4 252.2,30.3 280.0,30.4 307.8,30.4 335.6,30.3 363.3,30.4 391.1,30.4 418.9,30.3 446.7,30.3 474.4,30.5 502.2,30.3 530.0,30.1" fill="none" stroke="#f39c12" stroke-width="2" stroke-linejoin="round"/><text x="30.0" y="90" font-size="9" fill="#999" text-anchor="middle">0</text><text x="155.0" y="90" font-size="9" fill="#999" text-anchor="middle">45</text><text x="280.0" y="90" font-size="9" fill="#999" text-anchor="middle">90</text><text x="405.0" y="90" font-size="9" fill="#999" text-anchor="middle">135</text><text x="530.0" y="90" font-size="9" fill="#999" text-anchor="middle">180</text><text x="0" y="64.0" font-size="9" fill="#999">69</text><text x="0" y="34.0" font-size="9" fill="#999">95</text></g></svg></div><div class='tbl-wrap'><table><caption>R@1 (%) at key angles</caption><thead><tr><th>Model</th><th>Dataset</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td>PointNet++</td><td>shapenet</td><td>71.6</td><td>—</td><td>70.2</td><td>70.9</td><td>76.5</td></tr><tr><td>DGCNN</td><td>shapenet</td><td>91.8</td><td>—</td><td>85.3</td><td>82.8</td><td>92.9</td></tr><tr><td>DiPVNet</td><td>shapenet</td><td>85.6</td><td>—</td><td>85.2</td><td>84.8</td><td>88.1</td></tr><tr><td><strong>RISA</strong></td><td><strong>shapenet</strong></td><td><strong>94.8</strong></td><td><strong>—</strong></td><td><strong>94.8</strong></td><td><strong>95.0</strong></td><td><strong>95.7</strong></td></tr></tbody></table></div><div class="ai-box"><div class="ai-label">Analysis</div><p>RISA demonstrates the strongest performance with a 94.8% R@1@0, significantly outperforming DGCNN (91.8%), DiPVNet (85.6%), and PointNet++ (71.6%). While the provided data only lists scores at 0 degrees, the substantial performance gap between the top-tier models suggests that RISA’s architecture is likely more robust to geometric variations compared to the others. This indicates that achieving high accuracy at the base angle is a prerequisite for good rotation invariance, but true stability across 0-180 degrees would require consistent high scores at all intermediate angles, which these single-point metrics alone cannot fully confirm.</p></div></div></div><div class="tab-panel" id="exp3"><div class="panel-header"><h2>Exp 3 — Architecture Ablation</h2><p class="question">Which architectural components of RISA are essential for rotation-invariant retrieval?</p><div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA</span><span class='tag'>DGCNN</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ModelNet40</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · R@5 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Cross-entropy, 100 epochs</span></div><div class='info-card'><span class='info-label'>Conditions</span><span class='info-value'>5 ablation conditions</span></div></div></div><div class="panel-body"><div class='tbl-wrap'><table><caption>ModelNet40 class retrieval — R@1 (%) and mAP@5 (%)</caption><thead><tr><th>Condition</th><th>Description</th><th>R@1 0°</th><th>R@1 45°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>A_RISA</strong></td><td><strong>Full RISA model</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.3</strong></td><td><strong>95.0</strong></td><td><strong>95.9</strong></td></tr><tr><td>B_DGCNN_SO3</td><td>DGCNN + SO(3) augmentation</td><td>95.2</td><td>93.1</td><td>90.0</td><td>90.0</td><td>95.7</td></tr><tr><td>C_DGCNN_TTA</td><td>DGCNN + test-time augmentation</td><td>72.1</td><td>71.8</td><td>70.5</td><td>71.1</td><td>76.8</td></tr><tr><td>D_RISA_XYZ</td><td>RISA with raw XYZ features</td><td>88.0</td><td>63.0</td><td>40.9</td><td>58.2</td><td>89.8</td></tr><tr><td>E_RISA_NO_TOKEN</td><td>RISA without encoding token</td><td>93.1</td><td>93.2</td><td>92.9</td><td>93.3</td><td>94.3</td></tr></tbody></table></div><div class="ai-box"><div class="ai-label">Analysis</div><p>The most critical component is the global encoding token, as its removal (Condition E) causes the largest performance drop, particularly at high rotation angles (180°), where accuracy falls from 95.0% to 93.3%. Additionally, the reliance on non-XYZ features is evident in Condition D, where using only XYZ coordinates significantly degrades performance at 180° (58.2% vs. 95.0%), indicating that geometric features beyond raw coordinates are essential for robustness. While DGCNN with SO3 augmentation (Condition B) performs well, it still lags behind the full RISA model at 180°, suggesting that RISA's specific architectural enhancements provide superior generalization compared to standard data augmentation strategies.</p></div></div></div><div class="tab-panel" id="exp4"><div class="panel-header"><h2>Exp 4 — Perceiver vs Standard RISA</h2><p class="question">Does the perceiver-style attention update strategy improve cross-dataset transfer?</p><div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA (perceiver=False)</span><span class='tag'>RISA (perceiver=True)</span></span></div><div class='info-card'><span class='info-label'>Train Dataset</span><span class='info-value'><span class='tag'>ModelNet40</span></span></div><div class='info-card'><span class='info-label'>Test Dataset</span><span class='info-value'><span class='tag'>ScanObjectNN</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div></div></div><div class="panel-body"><div class="chart-wrap"><svg width="560" height="110" style="display:block;margin:.5rem 0 1rem"><g transform="translate(0,20)"><rect x="30" y="-18" width="12" height="3" fill="#4a6cf7"/><text x="45" y="-13" font-size="9" fill="#555">RISA (perceiver=False)</text><rect x="150" y="-18" width="12" height="3" fill="#e74c3c"/><text x="165" y="-13" font-size="9" fill="#555">RISA (perceiver=True)</text><polyline points="30.0,38.0 113.3,36.0 196.7,48.0 280.0,42.0 363.3,30.0 446.7,40.0 530.0,44.0" fill="none" stroke="#4a6cf7" stroke-width="2" stroke-linejoin="round"/><polyline points="30.0,58.0 113.3,60.0 196.7,52.0 280.0,54.0 363.3,58.0 446.7,52.0 530.0,50.0" fill="none" stroke="#e74c3c" stroke-width="2" stroke-linejoin="round"/><text x="30.0" y="90" font-size="9" fill="#999" text-anchor="middle">0</text><text x="155.0" y="90" font-size="9" fill="#999" text-anchor="middle">45</text><text x="280.0" y="90" font-size="9" fill="#999" text-anchor="middle">90</text><text x="405.0" y="90" font-size="9" fill="#999" text-anchor="middle">135</text><text x="530.0" y="90" font-size="9" fill="#999" text-anchor="middle">180</text><text x="0" y="64.0" font-size="9" fill="#999">34</text><text x="0" y="34.0" font-size="9" fill="#999">39</text></g></svg></div><div class='tbl-wrap'><table><caption>Cross-dataset transfer — ModelNet40 trained, ScanObjectNN tested</caption><thead><tr><th>Variant</th><th>R@1 0°</th><th>R@1 90°</th><th>R@1 180°</th><th>mAP@5 0°</th></tr></thead><tbody><tr><td><strong>RISA (perceiver=False)</strong></td><td><strong>37.8</strong></td><td><strong>37.1</strong></td><td><strong>36.7</strong></td><td><strong>44.3</strong></td></tr><tr><td>RISA (perceiver=True)</td><td>34.1</td><td>34.8</td><td>35.6</td><td>40.5</td></tr></tbody></table></div><div class="ai-box"><div class="ai-label">Analysis</div><p>The `perceiver` flag determines whether the model uses a Perceiver architecture, which employs a fixed set of latent arrays to compress and process variable-length point clouds, versus a standard transformer that attends directly over all input points. The variant with `perceiver=False` transfers better because direct attention mechanisms preserve more granular geometric details and local structural nuances, which are critical for distinguishing specific object categories across the significant domain gap between synthetic (ModelNet40) and real-world (ScanObjectNN) data. In contrast, the Perceiver's aggressive compression into a small number of latent vectors may discard fine-grained features necessary for robust cross-dataset generalization.</p></div></div></div><div class="tab-panel" id="exp8"><div class="panel-header"><h2>Exp 8 — Part-Level Retrieval</h2><p class="question">Can RISA retrieve shapes by part similarity, not just global class?</p><div class='info-grid'><div class='info-card'><span class='info-label'>Models</span><span class='info-value'><span class='tag'>RISA</span><span class='tag'>DGCNN</span><span class='tag'>PointNet++</span><span class='tag'>DiPVNet</span><span class='tag'>RINet</span><span class='tag'>3D-SIFT</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ShapeNet (16 classes)</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>class mAP@5 · part mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div><div class='info-card'><span class='info-label'>Part Labels</span><span class='info-value'>Back · Seat · Leg · Arm (chair example)</span></div></div></div><div class="panel-body"><div class='tbl-wrap'><table><caption>ShapeNet part retrieval — all 6 methods</caption><thead><tr><th>Method</th><th>class mAP@5 (%)</th><th>part mAP@5 (%)</th></tr></thead><tbody><tr><td>3D-SIFT-InvIndex</td><td>31.0</td><td>30.9</td></tr><tr><td>PointNet++</td><td>86.3</td><td>86.2</td></tr><tr><td>DGCNN</td><td>89.7</td><td>89.5</td></tr><tr><td>DiPVNet</td><td>86.5</td><td>86.4</td></tr><tr><td>RINet</td><td>86.0</td><td>85.7</td></tr><tr><td><strong>RISA</strong></td><td><strong>93.7</strong></td><td><strong>93.5</strong></td></tr></tbody></table></div><div class="ai-box"><div class="ai-label">Analysis</div><p>The significant performance gap between 3D-SIFT-InvIndex and deep learning-based methods highlights the superior discriminative power of learned global representations over traditional hand-crafted geometric descriptors. Among the deep learning approaches, RISA achieves the highest accuracy, suggesting that its specific architectural design or training strategy is more effective at capturing fine-grained part-level features than competitors like DGCNN or PointNet++. The near-identical values for class_mAP@5 and part_mAP@5 across all models indicate that successful part retrieval is tightly coupled with correct class identification, implying that part-awareness does not drastically alter the overall ranking quality compared to standard shape classification.</p></div></div></div><div class="tab-panel" id="exp10"><div class="panel-header"><h2>Exp 10 — Prior Point Selection Ablation</h2><p class="question">Which geometric prior best selects K=256 informative points from N=1024?</p><div class='info-grid'><div class='info-card'><span class='info-label'>Model</span><span class='info-value'><span class='tag'>RISA</span></span></div><div class='info-card'><span class='info-label'>Dataset</span><span class='info-value'><span class='tag'>ModelNet40</span></span></div><div class='info-card'><span class='info-label'>Metric</span><span class='info-value'>R@1 · mAP@5</span></div><div class='info-card'><span class='info-label'>Training</span><span class='info-value'>Proxy Anchor, 100 epochs</span></div><div class='info-card'><span class='info-label'>K / N</span><span class='info-value'>256 / 1024</span></div></div></div><div class="panel-body"><p class='pending'>Exp 10 still running — rerun update_site.sh when complete.</p><div class="ai-box"><div class="ai-label">Analysis</div><p><em>Results pending.</em></p></div></div></div></div><footer>sujay152002 · Generated by generate_site.py</footer><script>
 function showTab(id) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelector('.tab-btn[data-tab="'+id+'"]').classList.add('active');
   document.getElementById(id).classList.add('active');
 }
-</script>
-</body>
-</html>
+</script></body></html>
