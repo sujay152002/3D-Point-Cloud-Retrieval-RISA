@@ -93,14 +93,29 @@ def info_grid(**items):
 def tag_list(tags):
     return "".join(f"<span class='tag'>{t}</span>" for t in tags)
 
+_chart_id_counter = [0]
+def _cid():
+    _chart_id_counter[0] += 1
+    return f"chart{_chart_id_counter[0]}"
+
+def _filter_bar(series, cid):
+    """Render model-filter checkboxes for a chart."""
+    checks = "".join(
+        f'<label class="flt-lbl" style="--c:{color}" data-cid="{cid}" data-series="{label}" onclick="toggleSeries(this)" title="Toggle {label}">'
+        f'<span class="flt-dot" style="background:{color}"></span>{label}</label>'
+        for label, color, _ in series
+    )
+    return f'<div class="flt-bar" id="flt-{cid}">{checks}</div>'
+
 def line_chart(series, width=500, height=80, title=""):
-    """SVG line chart with dark theme and interactive dots."""
+    """SVG line chart with dark theme, interactive dots, filters, and zoom."""
     if not series:
         return ""
     all_x = sorted({x for _, _, pts in series for x, _ in pts})
     all_y = [y for _, _, pts in series for _, y in pts]
     if not all_x or not all_y:
         return ""
+    cid = _cid()
     pad = 36
     W, H = width, height
     mn, mx = min(all_y), max(all_y)
@@ -108,23 +123,26 @@ def line_chart(series, width=500, height=80, title=""):
     def sx(x): return pad + (x / max(all_x)) * (W - 2 * pad)
     def sy(y): return H - pad - ((y - mn) / rng) * (H - 2 * pad)
 
-    # grid lines
     grid = "".join(
         f'<line x1="{pad}" y1="{sy(v):.1f}" x2="{W-pad}" y2="{sy(v):.1f}" stroke="#21262d" stroke-width="1"/>'
         for v in [mn + rng*i/4 for i in range(5)]
     )
-    paths = ""
-    dots = ""
+    parts = []
     for label, color, pts in series:
         spts = sorted(pts)
         coords = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in spts)
-        paths += (f'<polyline points="{coords}" fill="none" stroke="{color}" '
-                  f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
-        for x, y in spts:
-            dots += (f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="3" fill="{color}" '
-                     f'stroke="#0d1117" stroke-width="1.5" class="chart-dot" '
-                     f'data-label="{label} @ {int(x)}°: {y*100:.1f}%"/>')
-
+        parts.append(
+            f'<g class="series-g" data-series="{label}" data-cid="{cid}">'
+            f'<polyline points="{coords}" fill="none" stroke="{color}" '
+            f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+            + "".join(
+                f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="3" fill="{color}" '
+                f'stroke="#0d1117" stroke-width="1.5" class="chart-dot" '
+                f'data-label="{label} @ {int(x)}°: {y*100:.1f}%"/>'
+                for x, y in spts
+            )
+            + '</g>'
+        )
     xlabels = "".join(
         f'<text x="{sx(a):.1f}" y="{H-2}" font-size="9" fill="#6e7681" text-anchor="middle">{a}°</text>'
         for a in [0, 45, 90, 135, 180] if a <= max(all_x)
@@ -133,26 +151,31 @@ def line_chart(series, width=500, height=80, title=""):
         f'<text x="{pad-4}" y="{sy(mn)+4:.1f}" font-size="9" fill="#6e7681" text-anchor="end">{mn*100:.0f}</text>'
         f'<text x="{pad-4}" y="{sy(mx)+4:.1f}" font-size="9" fill="#6e7681" text-anchor="end">{mx*100:.0f}</text>'
     )
-    legend = ""
-    for i, (label, color, _) in enumerate(series):
-        lx = pad + i * 130
-        legend += (f'<rect x="{lx}" y="-16" width="14" height="3" rx="1.5" fill="{color}"/>'
-                   f'<text x="{lx+18}" y="-11" font-size="9" fill="#8b949e">{label}</text>')
+    legend = "".join(
+        f'<rect x="{pad + i*130}" y="-16" width="14" height="3" rx="1.5" fill="{color}"/>'
+        f'<text x="{pad + i*130 + 18}" y="-11" font-size="9" fill="#8b949e">{label}</text>'
+        for i, (label, color, _) in enumerate(series)
+    )
     title_svg = f'<text x="{W//2}" y="{H+14}" font-size="9" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
     total_h = H + 20 + (16 if title else 0)
-
-    return (f'<div class="chart-wrap" style="position:relative">'
-            f'<svg width="{W}" height="{total_h}" style="display:block;margin:.5rem 0 1rem">'
-            f'<g transform="translate(0,22)">'
-            f'{grid}{legend}{paths}{dots}{xlabels}{ylabels}{title_svg}'
-            f'</g></svg><div class="tooltip" id="tt"></div></div>')
+    svg_inner = f'<g transform="translate(0,22)">{grid}{legend}{"".join(parts)}{xlabels}{ylabels}{title_svg}</g>'
+    svg = f'<svg id="svg-{cid}" width="{W}" height="{total_h}" style="display:block;margin:.5rem 0 1rem">{svg_inner}</svg>'
+    return (
+        f'<div class="chart-wrap" data-cid="{cid}" style="position:relative">'
+        f'{_filter_bar(series, cid)}'
+        f'{svg}'
+        f'<div class="tooltip" id="tt-{cid}"></div>'
+        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Zoom">⤢</button>'
+        f'</div>'
+    )
 
 
 def bar_chart(labels, series, width=560, height=120, title=""):
-    """Grouped horizontal bar chart with dark theme."""
+    """Grouped horizontal bar chart with dark theme, filters, and zoom."""
     n = len(labels)
     if not n or not series:
         return ""
+    cid = _cid()
     pad_l, pad_r, pad_t, pad_b = 120, 20, 24, 24
     W, H = width, height
     inner_h = H - pad_t - pad_b
@@ -162,18 +185,20 @@ def bar_chart(labels, series, width=560, height=120, title=""):
     mx = max(all_vals) if all_vals else 1
     def bx(v): return pad_l + (v / mx) * (W - pad_l - pad_r)
 
-    bars = ""
+    bar_groups = []
     for gi, label in enumerate(labels):
         gy = pad_t + gi * group_h
-        bars += f'<text x="{pad_l-6}" y="{gy + group_h/2 + 4:.1f}" font-size="9" fill="#8b949e" text-anchor="end">{label}</text>'
+        row = f'<text x="{pad_l-6}" y="{gy + group_h/2 + 4:.1f}" font-size="9" fill="#8b949e" text-anchor="end">{label}</text>'
         for si, (name, color, vals) in enumerate(series):
             by = gy + si * (bar_h + 3) + 2
             bw = bx(vals[gi]) - pad_l
-            bars += (f'<rect x="{pad_l}" y="{by:.1f}" width="{max(bw,1):.1f}" height="{bar_h:.1f}" '
-                     f'fill="{color}" opacity="0.85" rx="2" '
-                     f'class="chart-dot" data-label="{name} — {label}: {vals[gi]*100:.1f}%"/>')
+            row += (f'<rect x="{pad_l}" y="{by:.1f}" width="{max(bw,1):.1f}" height="{bar_h:.1f}" '
+                    f'fill="{color}" opacity="0.85" rx="2" '
+                    f'class="chart-dot" data-label="{name} — {label}: {vals[gi]*100:.1f}%" '
+                    f'data-series="{name}" data-cid="{cid}"/>')
             if bw > 24:
-                bars += f'<text x="{pad_l+bw+4:.1f}" y="{by+bar_h-1:.1f}" font-size="8" fill="#8b949e">{vals[gi]*100:.1f}</text>'
+                row += f'<text x="{pad_l+bw+4:.1f}" y="{by+bar_h-1:.1f}" font-size="8" fill="#8b949e" data-series="{name}" data-cid="{cid}" class="bar-val">{vals[gi]*100:.1f}</text>'
+        bar_groups.append(row)
 
     ticks = "".join(
         f'<line x1="{bx(v):.1f}" y1="{pad_t}" x2="{bx(v):.1f}" y2="{H-pad_b}" stroke="#21262d" stroke-width="1"/>'
@@ -187,10 +212,16 @@ def bar_chart(labels, series, width=560, height=120, title=""):
     )
     title_svg = f'<text x="{W//2}" y="{H+14}" font-size="9" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
     total_h = H + (16 if title else 0)
-    return (f'<div class="chart-wrap" style="position:relative">'
-            f'<svg width="{W}" height="{total_h}" style="display:block;margin:.5rem 0 1.5rem">'
-            f'{ticks}{bars}{legend}{title_svg}'
-            f'</svg><div class="tooltip" id="tt"></div></div>')
+    svg_inner = f'{ticks}{"".join(bar_groups)}{legend}{title_svg}'
+    svg = f'<svg id="svg-{cid}" width="{W}" height="{total_h}" style="display:block;margin:.5rem 0 1.5rem">{svg_inner}</svg>'
+    return (
+        f'<div class="chart-wrap" data-cid="{cid}" style="position:relative">'
+        f'{_filter_bar(series, cid)}'
+        f'{svg}'
+        f'<div class="tooltip" id="tt-{cid}"></div>'
+        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Zoom">⤢</button>'
+        f'</div>'
+    )
 
 
 # ── Experiment builders ───────────────────────────────────────────────────────
@@ -288,8 +319,16 @@ def tsne_svg(encodings, labels, title="", width=520, height=320):
     legend_h = ((len(unique_labels) - 1) // 4 + 1) * 16 + 8
     cap = f'<text x="{width//2}" y="{height+legend_h+18}" font-size="11" fill="#888" text-anchor="middle">{title}</text>' if title else ""
     total_h = height + legend_h + (24 if title else 4)
-    return (f'<svg width="{width}" height="{total_h}" style="display:block;margin:.5rem auto 1rem;background:#161b22;border-radius:8px">'
-            f'{dots}{legend}{cap}</svg>')
+    tsne_id = _cid()
+    svg = (f'<svg id="svg-{tsne_id}" width="{width}" height="{total_h}" '
+           f'style="display:block;margin:.5rem auto 1rem;background:#161b22;border-radius:8px">'
+           f'{dots}{legend}{cap}</svg>')
+    return (
+        f'<div class="chart-wrap" data-cid="{tsne_id}" style="position:relative">'
+        f'{svg}'
+        f'<button class="zoom-btn" onclick="openZoom(\'svg-{tsne_id}\')" title="Zoom">⤢</button>'
+        f'</div>'
+    )
 
 
 def build_exp2(data):
@@ -602,6 +641,28 @@ CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',system-ui,sans-serif;background:#0d1117;color:#e6edf3}
+.flt-bar{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.4rem}
+.flt-lbl{display:flex;align-items:center;gap:.35rem;padding:.25rem .65rem;border-radius:20px;
+         border:1px solid rgba(255,255,255,.12);font-size:.75rem;font-weight:600;color:#c9d1d9;
+         cursor:pointer;user-select:none;transition:all .18s;background:rgba(255,255,255,.04)}
+.flt-lbl:hover{border-color:var(--c);background:rgba(255,255,255,.08)}
+.flt-lbl.off{opacity:.35;text-decoration:line-through}
+.flt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.zoom-btn{position:absolute;top:0;right:0;background:#161b22;border:1px solid #30363d;
+          color:#8b949e;border-radius:5px;padding:.2rem .45rem;font-size:.8rem;cursor:pointer;
+          transition:all .18s;line-height:1}
+.zoom-btn:hover{color:#e6edf3;border-color:#58a6ff}
+.zoom-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;
+              align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.zoom-overlay.open{display:flex}
+.zoom-inner{position:relative;background:#161b22;border:1px solid #30363d;border-radius:12px;
+            padding:1.5rem;max-width:95vw;max-height:92vh;overflow:auto;
+            box-shadow:0 24px 80px rgba(0,0,0,.7)}
+.zoom-close{position:absolute;top:.6rem;right:.8rem;background:none;border:none;
+            color:#8b949e;font-size:1.4rem;cursor:pointer;line-height:1;padding:.2rem .4rem;
+            border-radius:4px;transition:color .15s}
+.zoom-close:hover{color:#e6edf3}
+.zoom-inner svg{width:auto;height:auto;max-width:88vw;max-height:80vh}
 header{background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#1a2332 100%);
        color:white;padding:4rem 2rem 3rem;text-align:center;position:relative;overflow:hidden}
 header::before{content:'';position:absolute;inset:0;
@@ -685,10 +746,47 @@ function showTab(id) {
   document.querySelector('.tab-btn[data-tab="'+id+'"]').classList.add('active');
   document.getElementById(id).classList.add('active');
 }
+
+function toggleSeries(lbl) {
+  var cid = lbl.dataset.cid, name = lbl.dataset.series;
+  lbl.classList.toggle('off');
+  var hidden = lbl.classList.contains('off');
+  // line chart: hide whole <g class="series-g">
+  document.querySelectorAll('.series-g[data-cid="'+cid+'"][data-series="'+name+'"]')
+    .forEach(function(g){ g.style.display = hidden ? 'none' : ''; });
+  // bar chart: hide individual rects + value labels
+  document.querySelectorAll('[data-cid="'+cid+'"][data-series="'+name+'"]')
+    .forEach(function(el){ el.style.display = hidden ? 'none' : ''; });
+}
+
+function openZoom(svgId) {
+  var src = document.getElementById(svgId);
+  if (!src) return;
+  var overlay = document.getElementById('zoom-overlay');
+  var container = document.getElementById('zoom-svg-container');
+  container.innerHTML = '';
+  var clone = src.cloneNode(true);
+  clone.removeAttribute('id');
+  clone.removeAttribute('width');
+  clone.removeAttribute('height');
+  clone.style.cssText = 'width:auto;height:auto;max-width:88vw;max-height:80vh;display:block';
+  container.appendChild(clone);
+  overlay.classList.add('open');
+}
+
+function closeZoom() {
+  document.getElementById('zoom-overlay').classList.remove('open');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeZoom(); });
+  document.getElementById('zoom-overlay').addEventListener('click', function(e){
+    if(e.target === this) closeZoom();
+  });
   document.querySelectorAll('.chart-dot').forEach(function(el) {
-    el.addEventListener('mouseenter', function(e) {
-      var tt = document.getElementById('tt');
+    el.addEventListener('mouseenter', function() {
+      var cid = el.closest('.chart-wrap') && el.closest('.chart-wrap').dataset.cid;
+      var tt = cid ? document.getElementById('tt-'+cid) : null;
       if (!tt) return;
       tt.textContent = el.dataset.label;
       tt.style.opacity = '1';
@@ -698,7 +796,8 @@ document.addEventListener('DOMContentLoaded', function() {
       tt.style.top  = (r.top  - pr.top  - tt.offsetHeight - 6) + 'px';
     });
     el.addEventListener('mouseleave', function() {
-      var tt = document.getElementById('tt');
+      var cid = el.closest('.chart-wrap') && el.closest('.chart-wrap').dataset.cid;
+      var tt = cid ? document.getElementById('tt-'+cid) : null;
       if (tt) tt.style.opacity = '0';
     });
   });
@@ -807,6 +906,11 @@ def build_html(experiments):
         f'<div class="tab-panels">{panels}</div>'
 
         f'<footer>sujay152002 · Generated by generate_site.py</footer>'
+        f'<div class="zoom-overlay" id="zoom-overlay">'
+        f'<div class="zoom-inner">'
+        f'<button class="zoom-close" onclick="closeZoom()">✕</button>'
+        f'<div id="zoom-svg-container"></div>'
+        f'</div></div>'
         f'<script>{JS}</script>'
         f'</body></html>'
     )
