@@ -846,7 +846,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 """
 
-def render_panel(exp):
+def render_panel(exp, active=False):
     header_extra = (
         f'<p class="question">{exp["question"]}</p>{exp["info"]}'
         if exp.get("question") else ""
@@ -855,8 +855,9 @@ def render_panel(exp):
         f'<div class="ai-box"><div class="ai-label">{exp.get("ai_label", "Analysis")}</div><p>{exp["ai"]}</p></div>'
         if exp.get("ai") else ""
     )
+    cls = "tab-panel active" if active else "tab-panel"
     return (
-        f'<div class="tab-panel" id="{exp["id"]}">'
+        f'<div class="{cls}" id="{exp["id"]}">'
         f'<div class="panel-header">'
         f'<h2>{exp["title"]}</h2>'
         f'{header_extra}'
@@ -928,7 +929,7 @@ def build_html(experiments):
         f'{e["title"].split("—")[0].strip()}</button>'
         for i, e in enumerate(all_tabs)
     )
-    panels = "".join(render_panel(e) for e in all_tabs)
+    panels = "".join(render_panel(e, active=(i == 0)) for i, e in enumerate(all_tabs))
     return (
         f'<!DOCTYPE html><html lang="en"><head>'
         f'<meta charset="UTF-8">'
