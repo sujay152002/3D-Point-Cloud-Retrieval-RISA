@@ -189,18 +189,24 @@ def line_chart(series, width=680, height=240, title=""):
 
 
 def bar_chart(labels, series, width=700, height=260, title=""):
-    """Grouped horizontal bar chart — tall, readable, with viewBox for proper zoom."""
+    """Grouped horizontal bar chart — no overlapping bars, with viewBox for proper zoom."""
     n = len(labels)
     if not n or not series:
         return ""
     cid = _cid()
-    leg_h = 28                          # legend row at top
-    pad_l, pad_r, pad_b = 155, 70, 36  # pad_r wide enough for value labels
-    W, H = width, height
+    ns = len(series)
+    leg_h = 28
+    pad_l, pad_r, pad_b = 155, 70, 36
+    W = width
+    # derive height from content so bars never overlap:
+    # each group needs: ns bars * bar_h + (ns-1) gaps + inter-group gap
+    bar_h   = 16
+    gap     = 5    # gap between bars in a group
+    grp_gap = 14   # gap between groups
+    group_h = ns * bar_h + (ns - 1) * gap + grp_gap
+    plot_h  = group_h * n
+    H = leg_h + 4 + plot_h + pad_b
     plot_top = leg_h + 4
-    plot_h   = H - plot_top - pad_b
-    group_h  = plot_h / n
-    bar_h    = max(14, group_h / len(series) - 6)
     all_vals = [v for _, _, vals in series for v in vals]
     mx = max(all_vals) if all_vals else 1
     def bx(v): return pad_l + (v / mx) * (W - pad_l - pad_r)
@@ -208,9 +214,11 @@ def bar_chart(labels, series, width=700, height=260, title=""):
     bar_groups = []
     for gi, label in enumerate(labels):
         gy = plot_top + gi * group_h
-        row = f'<text x="{pad_l-10}" y="{gy + group_h/2 + 4:.1f}" font-size="11" fill="#8b949e" text-anchor="end">{label}</text>'
+        # centre label vertically in the group
+        label_y = gy + (ns * bar_h + (ns - 1) * gap) / 2 + 4
+        row = f'<text x="{pad_l-10}" y="{label_y:.1f}" font-size="11" fill="#8b949e" text-anchor="end">{label}</text>'
         for si, (name, color, vals) in enumerate(series):
-            by = gy + si * (bar_h + 6) + 3
+            by = gy + si * (bar_h + gap)
             bw = bx(vals[gi]) - pad_l
             row += (f'<rect x="{pad_l}" y="{by:.1f}" width="{max(bw,2):.1f}" height="{bar_h:.1f}" '
                     f'fill="{color}" opacity="0.88" rx="3" class="chart-dot" '
@@ -225,16 +233,15 @@ def bar_chart(labels, series, width=700, height=260, title=""):
         f'<text x="{bx(v):.1f}" y="{plot_top+plot_h+18}" font-size="10" fill="#6e7681" text-anchor="middle">{int(v*100)}</text>'
         for v in [0.2, 0.4, 0.6, 0.8, 1.0] if v <= mx
     )
-    col_w = max(140, (W - pad_l) // max(len(series), 1))
+    col_w = max(140, (W - pad_l) // max(ns, 1))
     legend = "".join(
         f'<rect x="{pad_l + i*col_w}" y="6" width="14" height="14" rx="3" fill="{color}"/>'
         f'<text x="{pad_l + i*col_w + 20}" y="17" font-size="11" fill="#8b949e">{name}</text>'
         for i, (name, color, _) in enumerate(series)
     )
     title_svg = f'<text x="{W//2}" y="{plot_top+plot_h+pad_b-4}" font-size="11" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
-    total_h = H
     svg_inner = f'{ticks}{"".join(bar_groups)}{legend}{title_svg}'
-    svg = (f'<svg id="svg-{cid}" viewBox="0 0 {W} {total_h}" width="{W}" height="{total_h}" '
+    svg = (f'<svg id="svg-{cid}" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
            f'style="display:block;margin:.5rem 0 1.5rem">{svg_inner}</svg>')
     return (
         f'<div class="chart-wrap" data-cid="{cid}" style="position:relative">'
