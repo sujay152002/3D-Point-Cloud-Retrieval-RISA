@@ -93,54 +93,109 @@ def info_grid(**items):
 def tag_list(tags):
     return "".join(f"<span class='tag'>{t}</span>" for t in tags)
 
-def line_chart(series, width=500, height=80):
-    """SVG line chart. series = [(label, color, [(angle, r1), ...])]"""
+def line_chart(series, width=500, height=80, title=""):
+    """SVG line chart with dark theme and interactive dots."""
     if not series:
         return ""
     all_x = sorted({x for _, _, pts in series for x, _ in pts})
     all_y = [y for _, _, pts in series for _, y in pts]
     if not all_x or not all_y:
         return ""
-    pad = 30
+    pad = 36
     W, H = width, height
     mn, mx = min(all_y), max(all_y)
     rng = mx - mn if mx != mn else 0.01
     def sx(x): return pad + (x / max(all_x)) * (W - 2 * pad)
     def sy(y): return H - pad - ((y - mn) / rng) * (H - 2 * pad)
 
+    # grid lines
+    grid = "".join(
+        f'<line x1="{pad}" y1="{sy(v):.1f}" x2="{W-pad}" y2="{sy(v):.1f}" stroke="#21262d" stroke-width="1"/>'
+        for v in [mn + rng*i/4 for i in range(5)]
+    )
     paths = ""
+    dots = ""
     for label, color, pts in series:
-        coords = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in sorted(pts))
+        spts = sorted(pts)
+        coords = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in spts)
         paths += (f'<polyline points="{coords}" fill="none" stroke="{color}" '
-                  f'stroke-width="2" stroke-linejoin="round"/>')
+                  f'stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
+        for x, y in spts:
+            dots += (f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="3" fill="{color}" '
+                     f'stroke="#0d1117" stroke-width="1.5" class="chart-dot" '
+                     f'data-label="{label} @ {int(x)}°: {y*100:.1f}%"/>')
 
-    # x-axis labels at 0, 45, 90, 135, 180
     xlabels = "".join(
-        f'<text x="{sx(a):.1f}" y="{H}" font-size="9" fill="#999" text-anchor="middle">{a}</text>'
+        f'<text x="{sx(a):.1f}" y="{H-2}" font-size="9" fill="#6e7681" text-anchor="middle">{a}°</text>'
         for a in [0, 45, 90, 135, 180] if a <= max(all_x)
     )
-    # y-axis labels
     ylabels = (
-        f'<text x="0" y="{sy(mn)+4:.1f}" font-size="9" fill="#999">{mn*100:.0f}</text>'
-        f'<text x="0" y="{sy(mx)+4:.1f}" font-size="9" fill="#999">{mx*100:.0f}</text>'
+        f'<text x="{pad-4}" y="{sy(mn)+4:.1f}" font-size="9" fill="#6e7681" text-anchor="end">{mn*100:.0f}</text>'
+        f'<text x="{pad-4}" y="{sy(mx)+4:.1f}" font-size="9" fill="#6e7681" text-anchor="end">{mx*100:.0f}</text>'
     )
-    # legend
     legend = ""
     for i, (label, color, _) in enumerate(series):
-        lx = pad + i * 120
-        legend += (f'<rect x="{lx}" y="-18" width="12" height="3" fill="{color}"/>'
-                   f'<text x="{lx+15}" y="-13" font-size="9" fill="#555">{label}</text>')
+        lx = pad + i * 130
+        legend += (f'<rect x="{lx}" y="-16" width="14" height="3" rx="1.5" fill="{color}"/>'
+                   f'<text x="{lx+18}" y="-11" font-size="9" fill="#8b949e">{label}</text>')
+    title_svg = f'<text x="{W//2}" y="{H+14}" font-size="9" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
+    total_h = H + 20 + (16 if title else 0)
 
-    return (f'<div class="chart-wrap">'
-            f'<svg width="{W}" height="{H+20}" style="display:block;margin:.5rem 0 1rem">'
-            f'<g transform="translate(0,20)">'
-            f'{legend}{paths}{xlabels}{ylabels}'
-            f'</g></svg></div>')
+    return (f'<div class="chart-wrap" style="position:relative">'
+            f'<svg width="{W}" height="{total_h}" style="display:block;margin:.5rem 0 1rem">'
+            f'<g transform="translate(0,22)">'
+            f'{grid}{legend}{paths}{dots}{xlabels}{ylabels}{title_svg}'
+            f'</g></svg><div class="tooltip" id="tt"></div></div>')
+
+
+def bar_chart(labels, series, width=560, height=120, title=""):
+    """Grouped horizontal bar chart with dark theme."""
+    n = len(labels)
+    if not n or not series:
+        return ""
+    pad_l, pad_r, pad_t, pad_b = 120, 20, 24, 24
+    W, H = width, height
+    inner_h = H - pad_t - pad_b
+    group_h = inner_h / n
+    bar_h = max(5, group_h / len(series) - 3)
+    all_vals = [v for _, _, vals in series for v in vals]
+    mx = max(all_vals) if all_vals else 1
+    def bx(v): return pad_l + (v / mx) * (W - pad_l - pad_r)
+
+    bars = ""
+    for gi, label in enumerate(labels):
+        gy = pad_t + gi * group_h
+        bars += f'<text x="{pad_l-6}" y="{gy + group_h/2 + 4:.1f}" font-size="9" fill="#8b949e" text-anchor="end">{label}</text>'
+        for si, (name, color, vals) in enumerate(series):
+            by = gy + si * (bar_h + 3) + 2
+            bw = bx(vals[gi]) - pad_l
+            bars += (f'<rect x="{pad_l}" y="{by:.1f}" width="{max(bw,1):.1f}" height="{bar_h:.1f}" '
+                     f'fill="{color}" opacity="0.85" rx="2" '
+                     f'class="chart-dot" data-label="{name} — {label}: {vals[gi]*100:.1f}%"/>')
+            if bw > 24:
+                bars += f'<text x="{pad_l+bw+4:.1f}" y="{by+bar_h-1:.1f}" font-size="8" fill="#8b949e">{vals[gi]*100:.1f}</text>'
+
+    ticks = "".join(
+        f'<line x1="{bx(v):.1f}" y1="{pad_t}" x2="{bx(v):.1f}" y2="{H-pad_b}" stroke="#21262d" stroke-width="1"/>'
+        f'<text x="{bx(v):.1f}" y="{H-pad_b+12}" font-size="8" fill="#6e7681" text-anchor="middle">{int(v*100)}</text>'
+        for v in [0.2, 0.4, 0.6, 0.8, 1.0] if v <= mx
+    )
+    legend = "".join(
+        f'<rect x="{pad_l + i*120}" y="6" width="10" height="10" rx="2" fill="{color}"/>'
+        f'<text x="{pad_l + i*120 + 14}" y="15" font-size="9" fill="#8b949e">{name}</text>'
+        for i, (name, color, _) in enumerate(series)
+    )
+    title_svg = f'<text x="{W//2}" y="{H+14}" font-size="9" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
+    total_h = H + (16 if title else 0)
+    return (f'<div class="chart-wrap" style="position:relative">'
+            f'<svg width="{W}" height="{total_h}" style="display:block;margin:.5rem 0 1.5rem">'
+            f'{ticks}{bars}{legend}{title_svg}'
+            f'</svg><div class="tooltip" id="tt"></div></div>')
 
 
 # ── Experiment builders ───────────────────────────────────────────────────────
 
-COLORS = ["#4a6cf7", "#e74c3c", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c"]
+COLORS = ["#58a6ff", "#f78166", "#3fb950", "#d29922", "#bc8cff", "#39d353"]
 
 def build_exp1(data):
     if not data:
@@ -162,15 +217,18 @@ def build_exp1(data):
         rows, "R@1 (%) at every rotation angle — ShapeNet"
     )
 
-    # Line chart
-    series = [
-        (m, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[m][ds0]])
-        for i, m in enumerate(models)
-    ]
-    chart = line_chart(series, width=560, height=90)
+    # Line charts for R@1, R@5, mAP@5
+    series_r1   = [(m, COLORS[i % len(COLORS)], [(r["angle"], r["r1"])   for r in data[m][ds0]]) for i, m in enumerate(models)]
+    series_r5   = [(m, COLORS[i % len(COLORS)], [(r["angle"], r["r5"])   for r in data[m][ds0]]) for i, m in enumerate(models)]
+    series_map5 = [(m, COLORS[i % len(COLORS)], [(r["angle"], r["map5"]) for r in data[m][ds0]]) for i, m in enumerate(models)]
+    chart = (
+        line_chart(series_r1,   width=560, height=90, title="R@1 (%) vs rotation angle") +
+        line_chart(series_r5,   width=560, height=90, title="R@5 (%) vs rotation angle") +
+        line_chart(series_map5, width=560, height=90, title="mAP@5 (%) vs rotation angle")
+    )
 
     summary = "\n".join(
-        f"{m}: R@1@0={fmt(idx[m].get(0,{}).get('r1'))}%, R@1@90={fmt(idx[m].get(90,{}).get('r1'))}%, R@1@180={fmt(idx[m].get(180,{}).get('r1'))}%"
+        f"{m}: R@1@0={fmt(idx[m].get(0,{}).get('r1'))}%, R@5@0={fmt(idx[m].get(0,{}).get('r5'))}%, mAP5@0={fmt(idx[m].get(0,{}).get('map5'))}%, R@1@180={fmt(idx[m].get(180,{}).get('r1'))}%"
         for m in models
     )
     ai = ask_llm(
@@ -215,7 +273,7 @@ def tsne_svg(encodings, labels, title="", width=520, height=320):
     rng[rng == 0] = 1
     xs = pad + (xy[:, 0] - mn[0]) / rng[0] * (width  - 2 * pad)
     ys = pad + (xy[:, 1] - mn[1]) / rng[1] * (height - 2 * pad)
-    palette = ["#4a6cf7","#e74c3c","#2ecc71","#f39c12","#9b59b6","#1abc9c","#e67e22","#34495e"]
+    palette = ["#58a6ff","#f78166","#3fb950","#d29922","#bc8cff","#39d353","#ffa657","#79c0ff"]
     unique_labels = sorted(set(labels))
     color_map = {l: palette[i % len(palette)] for i, l in enumerate(unique_labels)}
     dots = "".join(
@@ -230,7 +288,7 @@ def tsne_svg(encodings, labels, title="", width=520, height=320):
     legend_h = ((len(unique_labels) - 1) // 4 + 1) * 16 + 8
     cap = f'<text x="{width//2}" y="{height+legend_h+18}" font-size="11" fill="#888" text-anchor="middle">{title}</text>' if title else ""
     total_h = height + legend_h + (24 if title else 4)
-    return (f'<svg width="{width}" height="{total_h}" style="display:block;margin:.5rem auto 1rem">'
+    return (f'<svg width="{width}" height="{total_h}" style="display:block;margin:.5rem auto 1rem;background:#161b22;border-radius:8px">'
             f'{dots}{legend}{cap}</svg>')
 
 
@@ -298,6 +356,14 @@ def build_exp3(data):
         th("Condition", "Description", "R@1 0°", "R@1 45°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
         rows, "ModelNet40 class retrieval — R@1 (%) and mAP@5 (%)"
     )
+    # Grouped bar chart: each condition as a group, bars for 0°/90°/180°
+    bar_labels = [c.replace("_", " ") for c in conditions]
+    bar_series = [
+        ("R@1 0°",   "#4a6cf7", [key_angles(data[c]).get(0,   {}).get("r1", 0) for c in conditions]),
+        ("R@1 90°",  "#e74c3c", [key_angles(data[c]).get(90,  {}).get("r1", 0) for c in conditions]),
+        ("R@1 180°", "#2ecc71", [key_angles(data[c]).get(180, {}).get("r1", 0) for c in conditions]),
+    ]
+    chart3 = bar_chart(bar_labels, bar_series, width=560, height=140, title="R@1 (%) per condition at 0°, 90°, 180°")
     summary = "\n".join(
         f"{c}: R@1@0={fmt(key_angles(data[c]).get(0,{}).get('r1'))}%, "
         f"R@1@180={fmt(key_angles(data[c]).get(180,{}).get('r1'))}%"
@@ -327,7 +393,7 @@ def build_exp3(data):
             Training="Cross-entropy, 100 epochs",
             Conditions="5 ablation conditions",
         ),
-        table=tbl, ai=ai,
+        table=chart3 + tbl, ai=ai,
     )
 
 
@@ -395,7 +461,7 @@ def build_exp4(old_data, perc_data):
 def build_exp8(data):
     if not data:
         return None
-    # All results from exp8_run_20260916_140537.log
+    # Final test results from exp8_run_20260916_140537.log
     all_models = [
         ("3D-SIFT-InvIndex", 0.3102, 0.3089),
         ("PointNet++",       0.8633, 0.8625),
@@ -415,8 +481,15 @@ def build_exp8(data):
         th("Method", "class mAP@5 (%)", "part mAP@5 (%)"),
         rows, "ShapeNet part retrieval — all 6 methods"
     )
+    bar_labels = [m for m, _, _ in all_models]
+    bar_series = [
+        ("class mAP@5", "#4a6cf7", [c for _, c, _ in all_models]),
+        ("part mAP@5",  "#e74c3c", [p for _, _, p in all_models]),
+    ]
+    chart8 = bar_chart(bar_labels, bar_series, width=560, height=160,
+                       title="class mAP@5 vs part mAP@5 (%) — all methods")
     ai = ask_llm(
-        "You are a researcher analyzing part-level 3D shape retrieval on ShapeNet (16 object categories). "
+        "You are a researcher analyzing part-level 3D shape retrieval on ShapeNet. "
         "Part-level retrieval means the query is a shape and the goal is to retrieve shapes with similar part structure "
         "(e.g. a chair with similar legs), not just the same global class. "
         "class mAP@5 measures retrieval by object category; part mAP@5 measures retrieval by part label agreement. "
@@ -437,7 +510,7 @@ def build_exp8(data):
             Training="Proxy Anchor, 100 epochs",
             **{"Part Labels": "Back · Seat · Leg · Arm (chair example)"},
         ),
-        table=tbl, ai=ai,
+        table=chart8 + tbl, ai=ai,
     )
 
 
@@ -481,6 +554,11 @@ def build_exp10(data):
         th("Prior", "Description", "R@1 0°", "R@1 45°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
         rows, "ModelNet40 — K=256 from N=1024 — R@1 (%) and mAP@5 (%)"
     )
+    series10 = [
+        (p, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[p]])
+        for i, p in enumerate(priors)
+    ]
+    chart10 = line_chart(series10, width=560, height=100, title="R@1 (%) vs rotation angle — per prior")
     summary = "\n".join(
         f"{p}: R@1@0={fmt(key_angles(data[p]).get(0,{}).get('r1'))}%, "
         f"mAP@5={fmt(key_angles(data[p]).get(0,{}).get('map5'))}%"
@@ -514,69 +592,90 @@ def build_exp10(data):
             **{"K / N": "256 / 1024"},
             Priors=str(len(priors)),
         ),
-        table=tbl, ai=ai,
+        table=chart10 + tbl, ai=ai,
     )
 
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
 CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f2f8;color:#1a1a2e}
-header{background:linear-gradient(135deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%);
-       color:white;padding:3.5rem 2rem;text-align:center}
-header h1{font-size:2.2rem;font-weight:800;letter-spacing:-0.02em;margin-bottom:.5rem}
-header .subtitle{color:#8892b0;font-size:1rem;margin-bottom:1.5rem}
+body{font-family:'Inter',system-ui,sans-serif;background:#0d1117;color:#e6edf3}
+header{background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#1a2332 100%);
+       color:white;padding:4rem 2rem 3rem;text-align:center;position:relative;overflow:hidden}
+header::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(74,108,247,.18) 0%,transparent 70%);pointer-events:none}
+header h1{font-size:2.6rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:.5rem;
+  background:linear-gradient(135deg,#fff 30%,#8892b0);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+header .subtitle{color:#8892b0;font-size:1rem;margin-bottom:1.8rem}
 header .badges{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
-.badge{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);
-       color:#ccd6f6;padding:.3rem .8rem;border-radius:20px;font-size:.8rem}
-.tab-bar{display:flex;gap:.3rem;padding:1.2rem 1.5rem 0;
-         max-width:1100px;margin:0 auto;flex-wrap:wrap}
-.tab-btn{background:white;border:none;padding:.6rem 1.2rem;border-radius:8px 8px 0 0;
-         font-size:.85rem;font-weight:600;color:#666;cursor:pointer;
-         border-bottom:3px solid transparent;transition:all .2s}
-.tab-btn:hover{color:#4a6cf7;background:#f0f4ff}
-.tab-btn.active{color:#4a6cf7;border-bottom:3px solid #4a6cf7;background:white}
-.tab-panels{max-width:1100px;margin:0 auto;padding:0 1.5rem 2rem}
-.tab-panel{display:none;background:white;border-radius:0 12px 12px 12px;
-           box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden}
+.badge{background:rgba(74,108,247,.15);border:1px solid rgba(74,108,247,.3);
+       color:#a5b4fc;padding:.3rem .9rem;border-radius:20px;font-size:.78rem;font-weight:500;
+       backdrop-filter:blur(4px)}
+.tab-bar{display:flex;gap:.25rem;padding:1.5rem 1.5rem 0;
+         max-width:1140px;margin:0 auto;flex-wrap:wrap}
+.tab-btn{background:#161b22;border:1px solid #30363d;border-bottom:none;
+         padding:.65rem 1.3rem;border-radius:8px 8px 0 0;
+         font-size:.83rem;font-weight:600;color:#8b949e;cursor:pointer;
+         transition:all .2s;font-family:inherit}
+.tab-btn:hover{color:#e6edf3;background:#1c2128;border-color:#484f58}
+.tab-btn.active{color:#79c0ff;background:#0d1117;border-color:#30363d;border-bottom:1px solid #0d1117;
+                margin-bottom:-1px;z-index:1}
+.tab-panels{max-width:1140px;margin:0 auto;padding:0 1.5rem 3rem}
+.tab-panel{display:none;background:#0d1117;border:1px solid #30363d;border-radius:0 8px 8px 8px;
+           overflow:hidden;animation:fadeIn .25s ease}
 .tab-panel.active{display:block}
-.panel-header{padding:2rem 2rem 1.5rem;border-bottom:1px solid #f0f0f0}
-.panel-header h2{font-size:1.4rem;color:#1a1a2e;margin-bottom:.4rem}
-.question{color:#4a6cf7;font-size:.95rem;font-style:italic;margin-bottom:1.2rem}
-.info-grid{display:flex;gap:.8rem;flex-wrap:wrap;margin-bottom:.5rem}
-.info-card{background:#f8f9ff;border:1px solid #e8ecff;border-radius:8px;
-           padding:.6rem 1rem;min-width:140px}
-.info-label{display:block;font-size:.7rem;font-weight:700;color:#4a6cf7;
-            text-transform:uppercase;letter-spacing:.05em;margin-bottom:.2rem}
-.info-value{font-size:.85rem;color:#333;display:flex;flex-wrap:wrap;gap:.3rem}
-.tag{background:#e8ecff;color:#4a6cf7;padding:.15rem .5rem;
-     border-radius:4px;font-size:.78rem;font-weight:600}
-.panel-body{padding:1.5rem 2rem}
-.chart-wrap{margin-bottom:.5rem}
-.tbl-wrap{overflow-x:auto;margin-bottom:1.5rem}
-table{width:100%;border-collapse:collapse;font-size:.87rem}
-caption{text-align:left;font-size:.78rem;color:#999;margin-bottom:.4rem;font-style:italic}
-thead tr{background:#1a1a2e}
-th{color:white;padding:.65rem .9rem;text-align:left;font-weight:600;font-size:.82rem}
-td{padding:.55rem .9rem;border-bottom:1px solid #f0f0f0;color:#333}
-tbody tr:hover td{background:#f5f7ff}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.panel-header{padding:2rem 2rem 1.5rem;border-bottom:1px solid #21262d;
+  background:linear-gradient(180deg,#161b22 0%,#0d1117 100%)}
+.panel-header h2{font-size:1.35rem;color:#e6edf3;margin-bottom:.5rem;font-weight:700}
+.question{color:#79c0ff;font-size:.92rem;font-style:italic;margin-bottom:1.3rem;line-height:1.5}
+.info-grid{display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.5rem}
+.info-card{background:#161b22;border:1px solid #30363d;border-radius:8px;
+           padding:.6rem 1rem;min-width:130px;transition:border-color .2s}
+.info-card:hover{border-color:#484f58}
+.info-label{display:block;font-size:.68rem;font-weight:700;color:#58a6ff;
+            text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem}
+.info-value{font-size:.82rem;color:#c9d1d9;display:flex;flex-wrap:wrap;gap:.3rem}
+.tag{background:rgba(88,166,255,.12);color:#79c0ff;padding:.15rem .55rem;
+     border-radius:4px;font-size:.76rem;font-weight:600;border:1px solid rgba(88,166,255,.2)}
+.panel-body{padding:1.8rem 2rem}
+.chart-wrap{margin-bottom:.75rem}
+.chart-title{font-size:.78rem;font-weight:600;color:#8b949e;text-transform:uppercase;
+             letter-spacing:.06em;margin-bottom:.5rem}
+.tbl-wrap{overflow-x:auto;margin-bottom:1.8rem;border-radius:8px;border:1px solid #21262d}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+caption{text-align:left;font-size:.75rem;color:#6e7681;padding:.5rem .9rem;font-style:italic;
+        background:#161b22;border-bottom:1px solid #21262d}
+thead tr{background:#161b22}
+th{color:#8b949e;padding:.7rem .9rem;text-align:left;font-weight:600;font-size:.78rem;
+   text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid #21262d}
+td{padding:.6rem .9rem;border-bottom:1px solid #161b22;color:#c9d1d9;transition:background .15s}
+tbody tr:hover td{background:#161b22}
 tbody tr:last-child td{border-bottom:none}
-.ai-box{background:linear-gradient(135deg,#f0f4ff,#f8f0ff);
-        border-left:4px solid #4a6cf7;border-radius:8px;padding:1.2rem 1.4rem}
-.ai-label{font-size:.72rem;font-weight:800;color:#4a6cf7;text-transform:uppercase;
-          letter-spacing:.08em;display:flex;align-items:center;gap:.4rem;margin-bottom:.6rem}
-.ai-box p{font-size:.93rem;line-height:1.7;color:#333}
-.pending{color:#888;font-style:italic;padding:1rem 0}
-.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;padding:.5rem 0 1rem}
-.ov-card{background:#f8f9ff;border:1px solid #e8ecff;border-radius:10px;padding:1.2rem 1.4rem;
-         cursor:pointer;transition:all .2s}
-.ov-card:hover{border-color:#4a6cf7;box-shadow:0 4px 16px rgba(74,108,247,.12);transform:translateY(-2px)}
-.ov-num{font-size:.72rem;font-weight:800;color:#4a6cf7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}
-.ov-title{font-size:1rem;font-weight:700;color:#1a1a2e;margin-bottom:.4rem}
-.ov-q{font-size:.82rem;color:#4a6cf7;font-style:italic;margin-bottom:.5rem;line-height:1.4}
-.ov-desc{font-size:.8rem;color:#666;line-height:1.5}
-footer{text-align:center;padding:2rem;color:#aaa;font-size:.8rem}
+td strong{color:#79c0ff}
+.ai-box{background:linear-gradient(135deg,rgba(88,166,255,.06),rgba(163,113,247,.06));
+        border:1px solid rgba(88,166,255,.2);border-left:3px solid #58a6ff;
+        border-radius:8px;padding:1.3rem 1.5rem;margin-top:1rem}
+.ai-label{font-size:.7rem;font-weight:700;color:#58a6ff;text-transform:uppercase;
+          letter-spacing:.1em;display:flex;align-items:center;gap:.4rem;margin-bottom:.7rem}
+.ai-label::before{content:'✦';font-size:.8rem}
+.ai-box p{font-size:.9rem;line-height:1.75;color:#c9d1d9}
+.pending{color:#6e7681;font-style:italic;padding:1rem 0}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:1rem;padding:.5rem 0 1rem}
+.ov-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:1.3rem 1.5rem;
+         cursor:pointer;transition:all .22s}
+.ov-card:hover{border-color:#58a6ff;box-shadow:0 0 0 1px rgba(88,166,255,.2),0 8px 24px rgba(0,0,0,.4);
+               transform:translateY(-3px)}
+.ov-num{font-size:.68rem;font-weight:700;color:#58a6ff;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem}
+.ov-title{font-size:.98rem;font-weight:700;color:#e6edf3;margin-bottom:.4rem}
+.ov-q{font-size:.8rem;color:#79c0ff;font-style:italic;margin-bottom:.5rem;line-height:1.45}
+.ov-desc{font-size:.78rem;color:#8b949e;line-height:1.55}
+footer{text-align:center;padding:2.5rem;color:#484f58;font-size:.78rem;border-top:1px solid #21262d}
+.tooltip{position:absolute;background:#1c2128;border:1px solid #30363d;border-radius:6px;
+         padding:.4rem .7rem;font-size:.75rem;color:#e6edf3;pointer-events:none;
+         opacity:0;transition:opacity .15s;white-space:nowrap;z-index:100}
 """
 
 JS = """
@@ -586,6 +685,24 @@ function showTab(id) {
   document.querySelector('.tab-btn[data-tab="'+id+'"]').classList.add('active');
   document.getElementById(id).classList.add('active');
 }
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.chart-dot').forEach(function(el) {
+    el.addEventListener('mouseenter', function(e) {
+      var tt = document.getElementById('tt');
+      if (!tt) return;
+      tt.textContent = el.dataset.label;
+      tt.style.opacity = '1';
+      var r = el.getBoundingClientRect();
+      var pr = el.closest('.chart-wrap').getBoundingClientRect();
+      tt.style.left = (r.left - pr.left + r.width/2 - tt.offsetWidth/2) + 'px';
+      tt.style.top  = (r.top  - pr.top  - tt.offsetHeight - 6) + 'px';
+    });
+    el.addEventListener('mouseleave', function() {
+      var tt = document.getElementById('tt');
+      if (tt) tt.style.opacity = '0';
+    });
+  });
+});
 """
 
 def render_panel(exp):
