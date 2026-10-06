@@ -119,7 +119,7 @@ def _filter_bar(series, cid):
         f'</div>'
     )
 
-def line_chart(series, width=560, height=200, title=""):
+def line_chart(series, width=680, height=240, title=""):
     """SVG line chart — tall, readable, with viewBox for proper zoom."""
     if not series:
         return ""
@@ -128,22 +128,25 @@ def line_chart(series, width=560, height=200, title=""):
     if not all_x or not all_y:
         return ""
     cid = _cid()
-    pad_l, pad_r, pad_t, pad_b = 48, 20, 20, 32
+    n_series = len(series)
+    # legend rows: wrap every 3 items
+    leg_cols = min(n_series, 3)
+    leg_rows = (n_series + leg_cols - 1) // leg_cols
+    leg_h = leg_rows * 18 + 8          # pixels reserved at top for legend
+    pad_l, pad_r, pad_b = 52, 24, 36
     W, H = width, height
-    mn, mx = min(all_y), max(all_y)
-    rng = mx - mn if mx != mn else 0.01
-    # add 5% breathing room top/bottom
-    mn2 = mn - rng * 0.05
-    mx2 = mx + rng * 0.05
+    plot_top = leg_h
+    plot_h   = H - plot_top - pad_b
+    mn, mx_y = min(all_y), max(all_y)
+    rng = mx_y - mn if mx_y != mn else 0.01
+    mn2, mx2 = mn - rng * 0.07, mx_y + rng * 0.07
     rng2 = mx2 - mn2
     def sx(x): return pad_l + (x / max(all_x)) * (W - pad_l - pad_r)
-    def sy(y): return H - pad_b - ((y - mn2) / rng2) * (H - pad_t - pad_b)
+    def sy(y): return plot_top + plot_h - ((y - mn2) / rng2) * plot_h
 
-    # 5 horizontal grid lines with y-axis labels
     grid_vals = [mn2 + rng2 * i / 4 for i in range(5)]
     grid = "".join(
-        f'<line x1="{pad_l}" y1="{sy(v):.1f}" x2="{W-pad_r}" y2="{sy(v):.1f}" '
-        f'stroke="#21262d" stroke-width="1"/>'
+        f'<line x1="{pad_l}" y1="{sy(v):.1f}" x2="{W-pad_r}" y2="{sy(v):.1f}" stroke="#21262d" stroke-width="1"/>'
         f'<text x="{pad_l-6}" y="{sy(v)+4:.1f}" font-size="10" fill="#6e7681" text-anchor="end">{v*100:.0f}</text>'
         for v in grid_vals
     )
@@ -153,84 +156,83 @@ def line_chart(series, width=560, height=200, title=""):
         coords = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in spts)
         parts.append(
             f'<g class="series-g" data-series="{label}" data-cid="{cid}">'
-            f'<polyline points="{coords}" fill="none" stroke="{color}" '
-            f'stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+            f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
             + "".join(
-                f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="4.5" fill="{color}" '
-                f'stroke="#0d1117" stroke-width="2" class="chart-dot" '
-                f'data-label="{label} @ {int(x)}°: {y*100:.1f}%"/>'
+                f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="4.5" fill="{color}" stroke="#0d1117" stroke-width="2" class="chart-dot" data-label="{label} @ {int(x)}\u00b0: {y*100:.1f}%"/>'
                 for x, y in spts
-            )
-            + '</g>'
+            ) + '</g>'
         )
     xlabels = "".join(
-        f'<text x="{sx(a):.1f}" y="{H-pad_b+16}" font-size="10" fill="#6e7681" text-anchor="middle">{a}°</text>'
+        f'<text x="{sx(a):.1f}" y="{plot_top+plot_h+20}" font-size="10" fill="#6e7681" text-anchor="middle">{a}\u00b0</text>'
         for a in [0, 45, 90, 135, 180] if a <= max(all_x)
     )
-    # legend inside SVG at top
+    # legend: wrap into rows of leg_cols, each item 200px wide
+    col_w = (W - pad_l) // leg_cols
     legend = "".join(
-        f'<rect x="{pad_l + i*140}" y="4" width="16" height="3" rx="1.5" fill="{color}"/>'
-        f'<text x="{pad_l + i*140 + 22}" y="10" font-size="10" fill="#8b949e">{label}</text>'
+        f'<rect x="{pad_l + (i % leg_cols)*col_w}" y="{(i // leg_cols)*18}" width="16" height="3" rx="1.5" fill="{color}"/>'
+        f'<text x="{pad_l + (i % leg_cols)*col_w + 22}" y="{(i // leg_cols)*18 + 10}" font-size="10" fill="#8b949e">{label}</text>'
         for i, (label, color, _) in enumerate(series)
     )
-    title_svg = f'<text x="{W//2}" y="{H+14}" font-size="10" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
-    total_h = H + (20 if title else 4)
+    title_svg = f'<text x="{W//2}" y="{plot_top+plot_h+pad_b-4}" font-size="10" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
+    total_h = H
     svg_inner = f'{grid}{legend}{"".join(parts)}{xlabels}{title_svg}'
     svg = (f'<svg id="svg-{cid}" viewBox="0 0 {W} {total_h}" width="{W}" height="{total_h}" '
-           f'style="display:block;margin:.5rem 0 1rem;overflow:visible">{svg_inner}</svg>')
+           f'style="display:block;margin:.5rem 0 1rem">{svg_inner}</svg>')
     return (
         f'<div class="chart-wrap" data-cid="{cid}" style="position:relative">'
         f'{_filter_bar(series, cid)}'
         f'{svg}'
         f'<div class="tooltip" id="tt-{cid}"></div>'
-        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Expand">⤢</button>'
+        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Expand">\u2922</button>'
         f'</div>'
     )
 
 
-def bar_chart(labels, series, width=600, height=220, title=""):
+def bar_chart(labels, series, width=700, height=260, title=""):
     """Grouped horizontal bar chart — tall, readable, with viewBox for proper zoom."""
     n = len(labels)
     if not n or not series:
         return ""
     cid = _cid()
-    pad_l, pad_r, pad_t, pad_b = 140, 24, 32, 32
+    leg_h = 28                          # legend row at top
+    pad_l, pad_r, pad_b = 155, 70, 36  # pad_r wide enough for value labels
     W, H = width, height
-    inner_h = H - pad_t - pad_b
-    group_h = inner_h / n
-    bar_h = max(10, group_h / len(series) - 4)
+    plot_top = leg_h + 4
+    plot_h   = H - plot_top - pad_b
+    group_h  = plot_h / n
+    bar_h    = max(14, group_h / len(series) - 6)
     all_vals = [v for _, _, vals in series for v in vals]
     mx = max(all_vals) if all_vals else 1
     def bx(v): return pad_l + (v / mx) * (W - pad_l - pad_r)
 
     bar_groups = []
     for gi, label in enumerate(labels):
-        gy = pad_t + gi * group_h
-        row = f'<text x="{pad_l-8}" y="{gy + group_h/2 + 4:.1f}" font-size="11" fill="#8b949e" text-anchor="end">{label}</text>'
+        gy = plot_top + gi * group_h
+        row = f'<text x="{pad_l-10}" y="{gy + group_h/2 + 4:.1f}" font-size="11" fill="#8b949e" text-anchor="end">{label}</text>'
         for si, (name, color, vals) in enumerate(series):
-            by = gy + si * (bar_h + 4) + 2
+            by = gy + si * (bar_h + 6) + 3
             bw = bx(vals[gi]) - pad_l
             row += (f'<rect x="{pad_l}" y="{by:.1f}" width="{max(bw,2):.1f}" height="{bar_h:.1f}" '
-                    f'fill="{color}" opacity="0.88" rx="3" '
-                    f'class="chart-dot" data-label="{name} — {label}: {vals[gi]*100:.1f}%" '
+                    f'fill="{color}" opacity="0.88" rx="3" class="chart-dot" '
+                    f'data-label="{name} \u2014 {label}: {vals[gi]*100:.1f}%" '
                     f'data-series="{name}" data-cid="{cid}"/>')
-            if bw > 30:
-                row += (f'<text x="{pad_l+bw+6:.1f}" y="{by+bar_h-2:.1f}" font-size="10" '
-                        f'fill="#8b949e" data-series="{name}" data-cid="{cid}" class="bar-val">{vals[gi]*100:.1f}</text>')
+            row += (f'<text x="{pad_l+bw+8:.1f}" y="{by+bar_h-2:.1f}" font-size="10" '
+                    f'fill="#6e7681" data-series="{name}" data-cid="{cid}" class="bar-val">{vals[gi]*100:.1f}</text>')
         bar_groups.append(row)
 
     ticks = "".join(
-        f'<line x1="{bx(v):.1f}" y1="{pad_t}" x2="{bx(v):.1f}" y2="{H-pad_b}" stroke="#21262d" stroke-width="1"/>'
-        f'<text x="{bx(v):.1f}" y="{H-pad_b+16}" font-size="10" fill="#6e7681" text-anchor="middle">{int(v*100)}</text>'
+        f'<line x1="{bx(v):.1f}" y1="{plot_top}" x2="{bx(v):.1f}" y2="{plot_top+plot_h}" stroke="#21262d" stroke-width="1"/>'
+        f'<text x="{bx(v):.1f}" y="{plot_top+plot_h+18}" font-size="10" fill="#6e7681" text-anchor="middle">{int(v*100)}</text>'
         for v in [0.2, 0.4, 0.6, 0.8, 1.0] if v <= mx
     )
+    col_w = max(140, (W - pad_l) // max(len(series), 1))
     legend = "".join(
-        f'<rect x="{pad_l + i*140}" y="10" width="14" height="14" rx="3" fill="{color}"/>'
-        f'<text x="{pad_l + i*140 + 20}" y="21" font-size="11" fill="#8b949e">{name}</text>'
+        f'<rect x="{pad_l + i*col_w}" y="6" width="14" height="14" rx="3" fill="{color}"/>'
+        f'<text x="{pad_l + i*col_w + 20}" y="17" font-size="11" fill="#8b949e">{name}</text>'
         for i, (name, color, _) in enumerate(series)
     )
-    title_svg = f'<text x="{W//2}" y="{H+18}" font-size="11" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
-    total_h = H + (24 if title else 4)
+    title_svg = f'<text x="{W//2}" y="{plot_top+plot_h+pad_b-4}" font-size="11" fill="#6e7681" text-anchor="middle">{title}</text>' if title else ""
+    total_h = H
     svg_inner = f'{ticks}{"".join(bar_groups)}{legend}{title_svg}'
     svg = (f'<svg id="svg-{cid}" viewBox="0 0 {W} {total_h}" width="{W}" height="{total_h}" '
            f'style="display:block;margin:.5rem 0 1.5rem">{svg_inner}</svg>')
@@ -239,7 +241,7 @@ def bar_chart(labels, series, width=600, height=220, title=""):
         f'{_filter_bar(series, cid)}'
         f'{svg}'
         f'<div class="tooltip" id="tt-{cid}"></div>'
-        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Expand">⤢</button>'
+        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Expand">\u2922</button>'
         f'</div>'
     )
 
@@ -273,9 +275,9 @@ def build_exp1(data):
     series_r5   = [(m, COLORS[i % len(COLORS)], [(r["angle"], r["r5"])   for r in data[m][ds0]]) for i, m in enumerate(models)]
     series_map5 = [(m, COLORS[i % len(COLORS)], [(r["angle"], r["map5"]) for r in data[m][ds0]]) for i, m in enumerate(models)]
     chart = (
-        line_chart(series_r1,   width=680, height=200, title="R@1 (%) vs rotation angle") +
-        line_chart(series_r5,   width=680, height=200, title="R@5 (%) vs rotation angle") +
-        line_chart(series_map5, width=680, height=200, title="mAP@5 (%) vs rotation angle")
+        line_chart(series_r1,   title="R@1 (%) vs rotation angle") +
+        line_chart(series_r5,   title="R@5 (%) vs rotation angle") +
+        line_chart(series_map5, title="mAP@5 (%) vs rotation angle")
     )
 
     summary = "\n".join(
@@ -422,7 +424,7 @@ def build_exp3(data):
         ("R@1 90°",  "#e74c3c", [key_angles(data[c]).get(90,  {}).get("r1", 0) for c in conditions]),
         ("R@1 180°", "#2ecc71", [key_angles(data[c]).get(180, {}).get("r1", 0) for c in conditions]),
     ]
-    chart3 = bar_chart(bar_labels, bar_series, width=680, height=220, title="R@1 (%) per condition at 0°, 90°, 180°")
+    chart3 = bar_chart(bar_labels, bar_series, title="R@1 (%) per condition at 0°, 90°, 180°")
     summary = "\n".join(
         f"{c}: R@1@0={fmt(key_angles(data[c]).get(0,{}).get('r1'))}%, "
         f"R@1@180={fmt(key_angles(data[c]).get(180,{}).get('r1'))}%"
@@ -483,7 +485,7 @@ def build_exp4(old_data, perc_data):
         th("Variant", "R@1 0°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
         rows, "Cross-dataset transfer — ModelNet40 trained, ScanObjectNN tested"
     )
-    chart = line_chart(series, width=680, height=200)
+    chart = line_chart(series)
     r1_old  = fmt(key_angles(list(old_data.values())[0]).get(0, {}).get("r1"))
     r1_perc = fmt(key_angles(list(perc_data.values())[0]).get(0, {}).get("r1"))
     ai = ask_llm(
@@ -545,8 +547,7 @@ def build_exp8(data):
         ("class mAP@5", "#4a6cf7", [c for _, c, _ in all_models]),
         ("part mAP@5",  "#e74c3c", [p for _, _, p in all_models]),
     ]
-    chart8 = bar_chart(bar_labels, bar_series, width=680, height=240,
-                       title="class mAP@5 vs part mAP@5 (%) — all methods")
+    chart8 = bar_chart(bar_labels, bar_series, title="class mAP@5 vs part mAP@5 (%) — all methods")
     ai = ask_llm(
         "You are a researcher analyzing part-level 3D shape retrieval on ShapeNet. "
         "Part-level retrieval means the query is a shape and the goal is to retrieve shapes with similar part structure "
@@ -617,7 +618,7 @@ def build_exp10(data):
         (p, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[p]])
         for i, p in enumerate(priors)
     ]
-    chart10 = line_chart(series10, width=680, height=220, title="R@1 (%) vs rotation angle — per prior")
+    chart10 = line_chart(series10, title="R@1 (%) vs rotation angle — per prior")
     summary = "\n".join(
         f"{p}: R@1@0={fmt(key_angles(data[p]).get(0,{}).get('r1'))}%, "
         f"mAP@5={fmt(key_angles(data[p]).get(0,{}).get('map5'))}%"
@@ -675,17 +676,18 @@ body{font-family:'Inter',system-ui,sans-serif;background:#0d1117;color:#e6edf3}
           color:#8b949e;border-radius:5px;padding:.2rem .45rem;font-size:.8rem;cursor:pointer;
           transition:all .18s;line-height:1}
 .zoom-btn:hover{color:#e6edf3;border-color:#58a6ff}
-.zoom-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;
-              align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.zoom-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;
+              align-items:center;justify-content:center;backdrop-filter:blur(6px)}
 .zoom-overlay.open{display:flex}
 .zoom-inner{position:relative;background:#161b22;border:1px solid #30363d;border-radius:12px;
-            padding:1.5rem;max-width:95vw;max-height:92vh;overflow:auto;
-            box-shadow:0 24px 80px rgba(0,0,0,.7)}
-.zoom-close{position:absolute;top:.6rem;right:.8rem;background:none;border:none;
-            color:#8b949e;font-size:1.4rem;cursor:pointer;line-height:1;padding:.2rem .4rem;
-            border-radius:4px;transition:color .15s}
-.zoom-close:hover{color:#e6edf3}
-.zoom-inner svg{width:auto;height:auto;max-width:88vw;max-height:80vh}
+            padding:3rem 1.5rem 1.5rem;width:96vw;height:94vh;
+            box-shadow:0 24px 80px rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;overflow:hidden}
+.zoom-close{position:absolute;top:.6rem;right:.8rem;background:rgba(255,255,255,.06);border:1px solid #30363d;
+            color:#8b949e;font-size:1.2rem;cursor:pointer;line-height:1;padding:.3rem .55rem;
+            border-radius:6px;transition:all .15s;z-index:10}
+.zoom-close:hover{color:#e6edf3;background:rgba(255,255,255,.12)}
+#zoom-svg-container{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+#zoom-svg-container svg{display:block;width:100%;height:100%;object-fit:contain}
 header{background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#1a2332 100%);
        color:white;padding:4rem 2rem 3rem;text-align:center;position:relative;overflow:hidden}
 header::before{content:'';position:absolute;inset:0;
@@ -792,22 +794,19 @@ function applyFilter(sel, cid) {
 function openZoom(svgId) {
   var src = document.getElementById(svgId);
   if (!src) return;
-  var overlay = document.getElementById('zoom-overlay');
   var container = document.getElementById('zoom-svg-container');
   container.innerHTML = '';
   var clone = src.cloneNode(true);
   clone.removeAttribute('id');
-  // ensure viewBox is set so it scales properly
   if (!clone.getAttribute('viewBox')) {
-    var w = src.getAttribute('width') || src.viewBox.baseVal.width;
-    var h = src.getAttribute('height') || src.viewBox.baseVal.height;
-    clone.setAttribute('viewBox', '0 0 '+w+' '+h);
+    clone.setAttribute('viewBox', '0 0 ' + (src.getAttribute('width')||800) + ' ' + (src.getAttribute('height')||400));
   }
-  clone.setAttribute('width', '100%');
-  clone.setAttribute('height', '100%');
-  clone.style.cssText = 'display:block;width:100%;height:100%;max-width:90vw;max-height:82vh';
+  // let CSS flex + viewBox handle all scaling
+  clone.removeAttribute('width');
+  clone.removeAttribute('height');
+  clone.style.cssText = '';
   container.appendChild(clone);
-  overlay.classList.add('open');
+  document.getElementById('zoom-overlay').classList.add('open');
 }
 
 function closeZoom() {
