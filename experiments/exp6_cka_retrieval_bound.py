@@ -23,7 +23,9 @@ Usage:
 import argparse
 import json
 import sys, io
-sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
+_fd = sys.stdout.fileno()
+if _fd >= 0:
+    sys.stdout = io.TextIOWrapper(open(_fd, "wb", 0), write_through=True)
 from pathlib import Path
 
 import numpy as np
@@ -42,7 +44,7 @@ from core.metrics import compute_cka
 from core.trainer import unpack_encoder_output
 from experiments.exp1_retrieval_eval import (
     encode_dataset, encode_rotated, recall_at_k,
-    rotation_by_angle, quick_train,
+    rotation_by_angle, train_ir,
 )
 
 DEVICE    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -165,14 +167,22 @@ def main():
     parser.add_argument("--n_samples",  type=int, default=16,
                         help="Shapes used for μCKA computation")
     parser.add_argument("--seed",       type=int, default=42)
+    parser.add_argument("--checkpoint_dir", type=str, default=None,
+                        help="Directory to save/load checkpoints. Saves as <dir>/<model>_<dataset>.pt")
+    parser.add_argument("--force_retrain",  action="store_true")
     parser.add_argument("--out",        default="outputs/exp6_cka_bound.json")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
     print(f"Device: {DEVICE}")
 
     kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
     test_ds = get_dataset(args.dataset, split="test", root=DATA_ROOT,
+                          num_points=N_POINTS, **kwargs)
+    val_ds  = get_dataset(args.dataset, split="val",  root=DATA_ROOT,
                           num_points=N_POINTS, **kwargs)
     samples = load_samples(args.dataset, n=args.n_samples, seed=args.seed)
 
@@ -184,22 +194,32 @@ def main():
     for model_name, model_cls in registry.items():
         print(f"\n{'='*60}\nModel: {model_name}")
         encoder = _build_encoder(model_name, model_cls).to(DEVICE)
-        quick_train(encoder, args.dataset, epochs=args.epochs, seed=args.seed)
+        ckpt_path = (
+            str(Path(args.checkpoint_dir) / f"{model_name}_{args.dataset}.pt")
+            if args.checkpoint_dir else None
+        )
+        train_ir(encoder, args.dataset, epochs=args.epochs, seed=args.seed,
+                 checkpoint_path=ckpt_path, force_retrain=args.force_retrain)
 
         # μCKA
         mu_cka = compute_mu_cka_for_encoder(encoder, samples, n_pairs=args.n_cka)
         print(f"  μCKA = {mu_cka:.4f}")
 
-        # Worst-case Recall@1 across angles
+        # gallery = test set, query = val set (disjoint)
         db_enc, db_lbl = encode_dataset(encoder, test_ds)
-        r1_per_angle   = []
+        q0_enc, q_lbl  = encode_dataset(encoder, val_ds)
+        db_n = F.normalize(db_enc, dim=1)
+
+        r1_per_angle = []
         for theta in ANGLES:
             if theta == 0:
-                q_enc = db_enc
+                q_enc = q0_enc
             else:
                 R     = rotation_by_angle(theta, axis="y", device=DEVICE)
-                q_enc = encode_rotated(encoder, test_ds, R)
-            r1 = recall_at_k(q_enc, db_enc, db_lbl, db_lbl, k=1)
+                q_enc = encode_rotated(encoder, val_ds, R)
+            q_n  = F.normalize(q_enc, dim=1)
+            sim  = q_n @ db_n.T
+            r1   = recall_at_k(sim, q_lbl, db_lbl, k=1)
             r1_per_angle.append(r1)
             print(f"  θ={theta:5.1f}°  R@1={r1:.3f}", flush=True)
 

@@ -43,14 +43,14 @@ def ask_llm(prompt: str, max_tokens: int = 900) -> str:
         },
     )
     import time
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read())
                 return data["choices"][0]["message"]["content"].strip()
         except urllib.error.HTTPError as e:
-            if e.code in (429, 503) and attempt < 2:
-                time.sleep(5 * (attempt + 1)); continue
+            if e.code in (429, 503) and attempt < 4:
+                time.sleep(15 * (attempt + 1)); continue
             return f"<em>LLM error {e.code}: {e.reason}</em>"
         except Exception as e:
             if attempt < 2:
@@ -95,7 +95,7 @@ def make_table(header, rows, caption=""):
 
 def info_grid(**items):
     cards = "".join(
-        f"<div class='info-card'><span class='info-label'>{k}</span>"
+        f"<div class='info-card'><span class='glow-spot'></span><span class='info-label'>{k}</span>"
         f"<span class='info-value'>{v}</span></div>"
         for k, v in items.items()
     )
@@ -161,15 +161,27 @@ def line_chart(series, width=680, height=240, title=""):
         f'<text x="{pad_l-6}" y="{sy(v)+4:.1f}" font-size="10" fill="#6e7681" text-anchor="end">{v*100:.0f}</text>'
         for v in grid_vals
     )
+    import math as _math
     parts = []
-    for label, color, pts in series:
+    for i, (label, color, pts) in enumerate(series):
         spts = sorted(pts)
         coords = " ".join(f"{sx(x):.1f},{sy(y):.1f}" for x, y in spts)
+        scoords = [(sx(x), sy(y)) for x, y in spts]
+        dash_len = sum(
+            _math.hypot(scoords[k+1][0]-scoords[k][0], scoords[k+1][1]-scoords[k][1])
+            for k in range(len(scoords)-1)
+        ) if len(scoords) > 1 else 1000
+        delay = i * 0.12
+        dot_delay = delay + 0.85
         parts.append(
             f'<g class="series-g" data-series="{label}" data-cid="{cid}">'
-            f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'
+            f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" '
+            f'class="chart-line" style="--dash-len:{dash_len:.1f};stroke-dasharray:{dash_len:.1f};stroke-dashoffset:{dash_len:.1f};'
+            f'animation:drawLine .9s cubic-bezier(.4,0,.2,1) {delay:.2f}s forwards"/>'
             + "".join(
-                f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="4.5" fill="{color}" stroke="#0d1117" stroke-width="2" class="chart-dot" data-label="{label} @ {int(x)}\u00b0: {y*100:.1f}%"/>'
+                f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="4.5" fill="{color}" stroke="#0d1117" stroke-width="2" class="chart-dot" '
+                f'data-label="{label} @ {int(x)}\u00b0: {y*100:.1f}%" '
+                f'style="opacity:0;animation:fadeIn .3s ease {dot_delay:.2f}s forwards"/>'
                 for x, y in spts
             ) + '</g>'
         )
@@ -333,11 +345,31 @@ def radar_chart(models, metrics, values, width=420, height=340):
         f'<text x="{26 + i*130}" y="{leg_y+10}" font-size="10" fill="#8b949e">{m}</text>'
         for i, m in enumerate(models)
     )
+    radar_colors = {m: palette[i % len(palette)] for i, m in enumerate(models)}
+    swatches = "".join(
+        f'<span class="flt-swatch" style="background:{radar_colors[m]}" data-series="{m}" data-cid="{cid}"></span>'
+        for m in models
+    )
+    opts = "".join(
+        f'<option value="{m}" selected style="background:#1c2128;color:#e6edf3">{m}</option>'
+        for m in models
+    )
+    filter_bar = (
+        f'<div class="flt-row">'
+        f'<span class="flt-icon">⊞</span>'
+        f'<div class="flt-swatches" id="sw-{cid}">{swatches}</div>'
+        f'<select class="flt-select" id="flt-{cid}" multiple size="1" '
+        f'onchange="applyRadarFilter(this)" title="Filter models">'
+        f'{opts}</select>'
+        f'<span class="flt-hint">Filter models</span>'
+        f'</div>'
+    )
     svg_inner = f'{rings}{axes}{polys}{legend}'
     svg = (f'<svg id="svg-{cid}" viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
            f'style="display:block;margin:.5rem auto 1rem">{svg_inner}</svg>')
     return (
         f'<div class="chart-wrap" data-cid="{cid}" style="position:relative">'
+        f'{filter_bar}'
         f'{svg}'
         f'<div class="tooltip" id="tt-{cid}"></div>'
         f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Expand">\u2922</button>'
@@ -813,6 +845,9 @@ header{background:linear-gradient(135deg,#0d1117 0%,#161b22 50%,#1a2332 100%);
        color:white;padding:4rem 2rem 3rem;text-align:center;position:relative;overflow:hidden}
 header::before{content:'';position:absolute;inset:0;
   background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(74,108,247,.18) 0%,transparent 70%);pointer-events:none}
+header::after{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse 40% 40% at 20% 80%,rgba(188,140,255,.08) 0%,transparent 60%),
+             radial-gradient(ellipse 40% 40% at 80% 20%,rgba(63,185,80,.06) 0%,transparent 60%)}
 header h1{font-size:2.6rem;font-weight:800;letter-spacing:-0.03em;margin-bottom:.5rem;
   background:linear-gradient(135deg,#fff 30%,#8892b0);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 header .subtitle{color:#8892b0;font-size:1rem;margin-bottom:1.8rem}
@@ -828,18 +863,23 @@ header .badges{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
 .tab-btn.active{color:#79c0ff;background:#0d1117;border-color:#30363d;border-bottom:1px solid #0d1117;
                 margin-bottom:-1px;z-index:1}
 .tab-panels{max-width:1140px;margin:0 auto;padding:0 1.5rem 3rem}
-.tab-panel{display:none;background:#0d1117;border:1px solid #30363d;border-radius:0 8px 8px 8px;
-           overflow:hidden;animation:fadeIn .25s ease}
+.tab-panel{display:none;background:rgba(13,17,23,.85);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+           border:1px solid rgba(48,54,61,.6);border-radius:0 8px 8px 8px;
+           overflow:hidden;animation:fadeIn .3s cubic-bezier(.4,0,.2,1)}
 .tab-panel.active{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.reveal{opacity:0;transform:translateY(28px);transition:opacity .55s cubic-bezier(.4,0,.2,1),transform .55s cubic-bezier(.4,0,.2,1)}
+.reveal.visible{opacity:1;transform:none}
+@keyframes drawLine{from{stroke-dashoffset:var(--dash-len)}to{stroke-dashoffset:0}}
 .panel-header{padding:2rem 2rem 1.5rem;border-bottom:1px solid #21262d;
   background:linear-gradient(180deg,#161b22 0%,#0d1117 100%)}
 .panel-header h2{font-size:1.35rem;color:#e6edf3;margin-bottom:.5rem;font-weight:700}
 .question{color:#79c0ff;font-size:.92rem;font-style:italic;margin-bottom:1.3rem;line-height:1.5}
 .info-grid{display:flex;gap:.7rem;flex-wrap:wrap;margin-bottom:.5rem}
-.info-card{background:#161b22;border:1px solid #30363d;border-radius:8px;
-           padding:.6rem 1rem;min-width:130px;transition:border-color .2s}
-.info-card:hover{border-color:#484f58}
+.info-card{background:rgba(22,27,34,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+           border:1px solid rgba(48,54,61,.7);border-radius:8px;
+           padding:.6rem 1rem;min-width:130px;transition:all .2s;position:relative;overflow:hidden}
+.info-card:hover{border-color:#58a6ff;box-shadow:0 0 12px rgba(88,166,255,.1)}
 .info-label{display:block;font-size:.68rem;font-weight:700;color:#58a6ff;
             text-transform:uppercase;letter-spacing:.06em;margin-bottom:.25rem}
 .info-value{font-size:.82rem;color:#c9d1d9;display:flex;flex-wrap:wrap;gap:.3rem}
@@ -871,9 +911,11 @@ td>*:not(.td-bar){position:relative;z-index:1}
 .ai-box p{font-size:.9rem;line-height:1.75;color:#c9d1d9}
 .pending{color:#6e7681;font-style:italic;padding:1rem 0}
 .stat-row{display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.8rem}
-.stat-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:1.2rem 1.5rem;
-           flex:1;min-width:140px;text-align:center;transition:border-color .2s}
-.stat-card:hover{border-color:#58a6ff}
+.stat-card{background:rgba(22,27,34,.65);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+           border:1px solid rgba(48,54,61,.7);border-radius:10px;padding:1.2rem 1.5rem;
+           flex:1;min-width:140px;text-align:center;transition:all .25s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+.stat-card:hover{border-color:#58a6ff;box-shadow:0 0 0 1px rgba(88,166,255,.2),0 8px 24px rgba(0,0,0,.4),0 0 16px rgba(88,166,255,.1);
+                 transform:translateY(-2px)}
 .stat-val{display:block;font-size:2rem;font-weight:800;color:#58a6ff;letter-spacing:-0.02em;
           background:linear-gradient(135deg,#58a6ff,#bc8cff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .stat-label{display:block;font-size:.82rem;font-weight:600;color:#e6edf3;margin:.2rem 0 .1rem}
@@ -883,17 +925,25 @@ td>*:not(.td-bar){position:relative;z-index:1}
 .ov-section-title{font-size:.78rem;font-weight:700;color:#58a6ff;text-transform:uppercase;
                   letter-spacing:.08em;margin-bottom:.8rem}
 .method-grid{display:flex;flex-direction:column;gap:.6rem}
-.method-card{display:flex;align-items:flex-start;gap:.75rem;background:#0d1117;
-             border:1px solid #21262d;border-radius:8px;padding:.75rem 1rem;transition:border-color .2s}
-.method-card:hover{border-color:#30363d}
+.method-card{display:flex;align-items:flex-start;gap:.75rem;
+             background:rgba(13,17,23,.7);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+             border:1px solid rgba(33,38,45,.9);border-radius:8px;padding:.75rem 1rem;
+             transition:all .22s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+.method-card:hover{border-color:#484f58;box-shadow:0 4px 16px rgba(0,0,0,.3);transform:translateX(3px)}
 .method-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:.3rem}
 .method-name{font-size:.85rem;font-weight:700;color:#e6edf3;margin-bottom:.2rem}
 .method-desc{font-size:.76rem;color:#8b949e;line-height:1.5}
 .ov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:1rem;padding:.5rem 0 1rem}
-.ov-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:1.3rem 1.5rem;
-         cursor:pointer;transition:all .22s}
-.ov-card:hover{border-color:#58a6ff;box-shadow:0 0 0 1px rgba(88,166,255,.2),0 8px 24px rgba(0,0,0,.4);
-               transform:translateY(-3px)}
+.ov-card{background:rgba(22,27,34,.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+         border:1px solid rgba(48,54,61,.8);border-radius:10px;padding:1.3rem 1.5rem;
+         cursor:pointer;transition:all .28s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+.ov-card:hover{border-color:#58a6ff;box-shadow:0 0 0 1px rgba(88,166,255,.25),0 8px 32px rgba(0,0,0,.5),0 0 20px rgba(88,166,255,.08);
+               transform:translateY(-4px) scale(1.01)}
+.glow-spot{position:absolute;pointer-events:none;border-radius:50%;width:320px;height:320px;
+           transform:translate(-50%,-50%);opacity:0;
+           background:radial-gradient(circle,rgba(88,166,255,.13) 0%,transparent 70%);
+           transition:opacity .25s ease}
+.ov-card:hover .glow-spot,.stat-card:hover .glow-spot,.method-card:hover .glow-spot,.info-card:hover .glow-spot{opacity:1}
 .ov-num{font-size:.68rem;font-weight:700;color:#58a6ff;text-transform:uppercase;letter-spacing:.08em;margin-bottom:.35rem}
 .ov-title{font-size:.98rem;font-weight:700;color:#e6edf3;margin-bottom:.4rem}
 .ov-q{font-size:.8rem;color:#79c0ff;font-style:italic;margin-bottom:.5rem;line-height:1.45}
@@ -905,11 +955,72 @@ footer{text-align:center;padding:2.5rem;color:#484f58;font-size:.78rem;border-to
 """
 
 JS = """
+var _revealObserver = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      _revealObserver.unobserve(entry.target);
+    }
+  });
+}, {threshold: 0.08, rootMargin: '0px 0px -40px 0px'});
+
+function _attachReveal(root) {
+  (root || document).querySelectorAll(
+    '.ov-card,.stat-card,.info-card,.method-card,.tbl-wrap,.chart-wrap,.ai-box'
+  ).forEach(function(el) {
+    if (!el.classList.contains('reveal')) {
+      el.classList.add('reveal');
+      _revealObserver.observe(el);
+    }
+  });
+}
+
 function showTab(id) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.querySelector('.tab-btn[data-tab="'+id+'"]').classList.add('active');
-  document.getElementById(id).classList.add('active');
+  var panel = document.getElementById(id);
+  panel.classList.add('active');
+  panel.querySelectorAll('.chart-line').forEach(function(line) {
+    var dl = line.style.getPropertyValue('--dash-len') || line.getAttribute('stroke-dasharray') || '1000';
+    line.style.animation = 'none';
+    line.style.strokeDashoffset = dl;
+    line.getBoundingClientRect();
+    line.style.animation = '';
+  });
+  _attachReveal(panel);
+}
+
+function applyRadarFilter(sel) {
+  var modelColors = {
+    '3D-SIFT':   '#58a6ff',
+    'PointNet++':'#f78166',
+    'DGCNN':     '#3fb950',
+    'DiPVNet':   '#d29922',
+    'RINet':     '#bc8cff',
+    'RISA':      '#39d353'
+  };
+  var selected = Array.from(sel.selectedOptions).map(function(o){ return o.value; });
+  var allOpts  = Array.from(sel.options).map(function(o){ return o.value; });
+  var visible  = selected.length === 0 ? allOpts : selected;
+  var svg = sel.closest('.chart-wrap').querySelector('svg');
+  if (!svg) return;
+  svg.querySelectorAll('polygon[fill], polygon[stroke]').forEach(function(el) {
+    var c = el.getAttribute('fill') !== 'none' ? el.getAttribute('fill') : el.getAttribute('stroke');
+    var model = Object.keys(modelColors).find(function(m){ return modelColors[m] === c; });
+    if (model) el.style.display = visible.indexOf(model) !== -1 ? '' : 'none';
+  });
+  svg.querySelectorAll('circle.chart-dot').forEach(function(el) {
+    var c = el.getAttribute('fill');
+    var model = Object.keys(modelColors).find(function(m){ return modelColors[m] === c; });
+    if (model) el.style.display = visible.indexOf(model) !== -1 ? '' : 'none';
+  });
+  var cid = sel.closest('.chart-wrap').dataset.cid;
+  allOpts.forEach(function(name) {
+    var show = visible.indexOf(name) !== -1;
+    var sw = document.querySelector('.flt-swatch[data-cid="'+cid+'"][data-series="'+name+'"]');
+    if (sw) sw.style.opacity = show ? '0.9' : '0.2';
+  });
 }
 
 function applyFilter(sel, cid) {
@@ -982,6 +1093,15 @@ function animateCounters() {
 
 document.addEventListener('DOMContentLoaded', function() {
   animateCounters();
+  _attachReveal();
+  // trigger line draw animation for whichever panel is active on load
+  document.querySelectorAll('.tab-panel.active .chart-line').forEach(function(line) {
+    var dl = line.getAttribute('stroke-dasharray') || '1000';
+    line.style.animation = 'none';
+    line.style.strokeDashoffset = dl;
+    line.getBoundingClientRect();
+    line.style.animation = '';
+  });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeZoom(); });
   document.getElementById('zoom-overlay').addEventListener('click', function(e){
     if(e.target === this) closeZoom();
@@ -990,19 +1110,33 @@ document.addEventListener('DOMContentLoaded', function() {
     el.addEventListener('mouseenter', function() {
       var cid = el.closest('.chart-wrap') && el.closest('.chart-wrap').dataset.cid;
       var tt = cid ? document.getElementById('tt-'+cid) : null;
-      if (!tt) return;
-      tt.textContent = el.dataset.label;
-      tt.style.opacity = '1';
-      var r = el.getBoundingClientRect();
-      var pr = el.closest('.chart-wrap').getBoundingClientRect();
-      tt.style.left = (r.left - pr.left + r.width/2 - tt.offsetWidth/2) + 'px';
-      tt.style.top  = (r.top  - pr.top  - tt.offsetHeight - 6) + 'px';
+      if (tt) {
+        tt.textContent = el.dataset.label;
+        tt.style.opacity = '1';
+        var r = el.getBoundingClientRect();
+        var pr = el.closest('.chart-wrap').getBoundingClientRect();
+        tt.style.left = (r.left - pr.left + r.width/2 - tt.offsetWidth/2) + 'px';
+        tt.style.top  = (r.top  - pr.top  - tt.offsetHeight - 6) + 'px';
+      }
+      var fill = el.getAttribute('fill');
+      if (fill && fill !== 'none') el.style.filter = 'drop-shadow(0 0 6px '+fill+') drop-shadow(0 0 12px '+fill+'88)';
     });
     el.addEventListener('mouseleave', function() {
       var cid = el.closest('.chart-wrap') && el.closest('.chart-wrap').dataset.cid;
       var tt = cid ? document.getElementById('tt-'+cid) : null;
       if (tt) tt.style.opacity = '0';
+      el.style.filter = '';
     });
+  });
+  // mouse-tracking spotlight for cards
+  document.addEventListener('mousemove', function(e) {
+    var card = e.target.closest('.ov-card,.stat-card,.method-card,.info-card');
+    if (!card) return;
+    var spot = card.querySelector('.glow-spot');
+    if (!spot) return;
+    var rect = card.getBoundingClientRect();
+    spot.style.left = (e.clientX - rect.left) + 'px';
+    spot.style.top  = (e.clientY - rect.top)  + 'px';
   });
 });
 """
@@ -1047,6 +1181,7 @@ EXP_OVERVIEW = [
 def build_overview():
     cards = "".join(
         f'<div class="ov-card" onclick="showTab(\'exp{row[0].split()[1]}\')">'
+        f'<div class="glow-spot"></div>'
         f'<div class="ov-num">{row[0]}</div>'
         f'<div class="ov-title">{row[1]}</div>'
         f'<div class="ov-q">{row[2]}</div>'
@@ -1062,7 +1197,7 @@ def build_overview():
         ("19", "Rotation Angles", "0° → 180° SO(3)"),
     ]
     stat_cards = "".join(
-        f'<div class="stat-card"><span class="stat-val" data-target="{v}">{v}</span>'
+        f'<div class="stat-card"><div class="glow-spot"></div><span class="stat-val" data-target="{v}">{v}</span>'
         f'<span class="stat-label">{l}</span><span class="stat-sub">{s}</span></div>'
         for v, l, s in stats
     )
@@ -1091,7 +1226,7 @@ def build_overview():
         ("3D-SIFT", "#39d353", "3D Scale-Invariant Feature Transform with inverted index retrieval. Hand-crafted descriptor baseline."),
     ]
     method_cards = "".join(
-        f'<div class="method-card"><div class="method-dot" style="background:{c}"></div>'
+        f'<div class="method-card"><div class="glow-spot"></div><div class="method-dot" style="background:{c}"></div>'
         f'<div><div class="method-name">{n}</div><div class="method-desc">{d}</div></div></div>'
         for n, c, d in methods
     )

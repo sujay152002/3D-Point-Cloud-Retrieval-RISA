@@ -14,7 +14,9 @@ Usage:
 import argparse
 import json
 import sys, io
-sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
+_fd = sys.stdout.fileno()
+if _fd >= 0:
+    sys.stdout = io.TextIOWrapper(open(_fd, "wb", 0), write_through=True)
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +25,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+from sklearn.cluster import KMeans
+from sklearn.metrics import normalized_mutual_info_score, adjusted_mutual_info_score
 
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
@@ -85,54 +89,14 @@ def random_rotation(device):
     return Q
 
 
-def quick_train(encoder, dataset_name, epochs=20, seed=42):
-    import torch.nn as nn, torch.optim as optim
-
-    torch.manual_seed(seed)
-    kwargs = {"variant": "OBJ_ONLY"} if dataset_name == "scanobjectnn" else {}
-    try:
-        ds = get_dataset(dataset_name, split="train", root=DATA_ROOT, num_points=N_POINTS, **kwargs)
-    except Exception as e:
-        print(f"  [train] {e} — skipping training"); return
-
-    loader = torch.utils.data.DataLoader(ds, batch_size=8, shuffle=True, drop_last=True)
-    encoder.eval()
-    with torch.no_grad():
-        z, _ = unpack_encoder_output(encoder(torch.randn(2, 3, 64, device=DEVICE)))
-    enc_dim = z.shape[-1]
-    _base   = getattr(ds, "dataset", ds)
-    num_cls = int(getattr(_base, "num_classes", 40))
-    head    = nn.Linear(enc_dim, num_cls).to(DEVICE)
-    opt     = optim.Adam(list(encoder.parameters()) + list(head.parameters()), lr=1e-3)
-    crit    = nn.CrossEntropyLoss()
-
-    encoder.train(); head.train()
-    for ep in range(epochs):
-        for batch in loader:
-            pts = batch[0] if isinstance(batch, (tuple, list)) else batch
-            lbl = batch[1] if isinstance(batch, (tuple, list)) else torch.zeros(pts.shape[0], dtype=torch.long)
-            if isinstance(batch, (tuple, list)) and len(batch) == 3:
-                pts, lbl, _ = batch
-            pts = pts.float().to(DEVICE)
-            lbl = lbl.long().to(DEVICE)
-            if pts.shape[1] != 3:
-                pts = pts.permute(0, 2, 1)
-            B = pts.shape[0]
-            Q, _ = torch.linalg.qr(torch.randn(B, 3, 3, device=DEVICE))
-            Q[:, :, 0] *= torch.linalg.det(Q).sign().view(B, 1)
-            pts = Q @ pts
-            opt.zero_grad()
-            z, _ = unpack_encoder_output(encoder(pts))
-            crit(head(z), lbl).backward()
-            opt.step()
-        print(f"    epoch {ep+1}/{epochs}", flush=True)
-    encoder.eval()
-    del head, opt
+def _train(encoder, dataset_name, epochs, seed, checkpoint_path=None, force_retrain=False):
+    from experiments.exp1_retrieval_eval import train_ir
+    train_ir(encoder, dataset_name, epochs=epochs, seed=seed,
+             checkpoint_path=checkpoint_path, force_retrain=force_retrain)
 
 
-@torch.no_grad()
-def collect_encodings(encoder, dataset, n_classes=8, n_shapes_per_class=5, n_rotations=32):
-    encoder.eval()
+@torch.inference_mode()
+def collect_encodings(encoder, dataset, n_classes=8, n_shapes_per_class=5, n_rotations=32, seed=0):
     """
     For each of n_classes, pick n_shapes_per_class shapes and encode them
     under n_rotations random SO(3) rotations.
@@ -142,6 +106,7 @@ def collect_encodings(encoder, dataset, n_classes=8, n_shapes_per_class=5, n_rot
         labels    : (n_classes * n_shapes_per_class * n_rotations,)  — class index
         shape_ids : same shape — which shape within the class
     """
+    encoder.eval()
     # Group dataset indices by class
     all_pts, all_lbl = [], []
     for i in range(len(dataset)):
@@ -156,7 +121,7 @@ def collect_encodings(encoder, dataset, n_classes=8, n_shapes_per_class=5, n_rot
     unique_classes = sorted(set(all_lbl))[:n_classes]
     class_to_idx   = {c: [i for i, l in enumerate(all_lbl) if l == c] for c in unique_classes}
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(seed)
     encodings, labels, shape_ids = [], [], []
 
     for class_rank, cls in enumerate(unique_classes):
@@ -185,42 +150,16 @@ def collect_encodings(encoder, dataset, n_classes=8, n_shapes_per_class=5, n_rot
             np.array(shape_ids))
 
 
-def plot_tsne(encodings_a, labels_a, name_a,
-              encodings_b, labels_b, name_b,
-              dataset_name, out_path, n_classes):
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-    fig.suptitle(f"Semantic Collapse under SO(3) — {dataset_name}", fontsize=14, fontweight="bold")
-
-    for ax, enc, lbl, title in [
-        (axes[0], encodings_a, labels_a, name_a),
-        (axes[1], encodings_b, labels_b, name_b),
-    ]:
-        tsne  = TSNE(n_components=2, perplexity=30, random_state=0, max_iter=1000)
-        proj  = tsne.fit_transform(enc)
-
-        for c in range(n_classes):
-            mask = lbl == c
-            ax.scatter(proj[mask, 0], proj[mask, 1],
-                       c=CLASS_COLORS[c % len(CLASS_COLORS)],
-                       s=8, alpha=0.6, label=f"class {c}")
-
-        ax.set_title(title, fontsize=12, fontweight="bold")
-        ax.set_xticks([]); ax.set_yticks([])
-        ax.legend(markerscale=2, fontsize=7, loc="best",
-                  ncol=2 if n_classes > 5 else 1)
-
-    plt.tight_layout()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  Saved → {out_path}")
+def cluster_metrics(enc, lbl, n_classes):
+    """K-means cluster assignments → NMI and AMI against true labels."""
+    km = KMeans(n_clusters=n_classes, random_state=0, n_init=10)
+    pred = km.fit_predict(enc)
+    nmi = normalized_mutual_info_score(lbl, pred, average_method="arithmetic")
+    ami = adjusted_mutual_info_score(lbl, pred)
+    return nmi, ami
 
 
 def plot_tsne_all(results_dict, dataset_name, out_path, n_classes):
-    """
-    Plot a grid of t-SNE panels, one per model.
-    """
     models = list(results_dict.keys())
     n_cols = min(3, len(models))
     n_rows = (len(models) + n_cols - 1) // n_cols
@@ -229,15 +168,16 @@ def plot_tsne_all(results_dict, dataset_name, out_path, n_classes):
     axes = np.array(axes).flatten()
 
     for ax, model_name in zip(axes, models):
-        enc, lbl = results_dict[model_name]
-        tsne = TSNE(n_components=2, perplexity=30, random_state=0, max_iter=1000)
+        enc, lbl, nmi, ami = results_dict[model_name]
+        tsne = TSNE(n_components=2, perplexity=30, random_state=args.seed, max_iter=1000)
         proj = tsne.fit_transform(enc)
         for c in range(n_classes):
             mask = lbl == c
             ax.scatter(proj[mask, 0], proj[mask, 1],
                        c=CLASS_COLORS[c % len(CLASS_COLORS)],
                        s=8, alpha=0.6, label=f"class {c}")
-        ax.set_title(model_name, fontsize=11, fontweight="bold")
+        ax.set_title(f"{model_name}\nNMI={nmi:.3f}  AMI={ami:.3f}",
+                     fontsize=11, fontweight="bold")
         ax.set_xticks([]); ax.set_yticks([])
         ax.legend(markerscale=2, fontsize=7, loc="best", ncol=2 if n_classes > 5 else 1)
 
@@ -263,11 +203,16 @@ def main():
     parser.add_argument("--n_rotations",   type=int, default=32,
                         help="SO(3) rotations per shape")
     parser.add_argument("--checkpoint_dir", type=str, default=None)
+    parser.add_argument("--force_retrain",  action="store_true",
+                        help="Retrain even if a checkpoint already exists, overwriting it")
     parser.add_argument("--epochs",        type=int, default=20)
     parser.add_argument("--seed",          type=int, default=42)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
     print(f"Device: {DEVICE}")
 
     kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
@@ -277,9 +222,13 @@ def main():
     results = {}
     for model_name in args.models:
         print(f"\n{'='*50}\nModel: {model_name}")
-        encoder = _build_encoder(model_name, args.checkpoint_dir).to(DEVICE)
-        if not args.checkpoint_dir:
-            quick_train(encoder, args.dataset, epochs=args.epochs, seed=args.seed)
+        encoder = _build_encoder(model_name).to(DEVICE)
+        ckpt_path = (
+            str(Path(args.checkpoint_dir) / f"{model_name}_{args.dataset}.pt")
+            if args.checkpoint_dir else None
+        )
+        _train(encoder, args.dataset, epochs=args.epochs, seed=args.seed,
+               checkpoint_path=ckpt_path, force_retrain=args.force_retrain)
 
         print(f"  Collecting encodings ({args.n_classes} classes × "
               f"{args.n_shapes} shapes × {args.n_rotations} rotations)…")
@@ -288,8 +237,11 @@ def main():
             n_classes=args.n_classes,
             n_shapes_per_class=args.n_shapes,
             n_rotations=args.n_rotations,
+            seed=args.seed,
         )
-        results[model_name] = (enc, lbl)
+        nmi, ami = cluster_metrics(enc, lbl, args.n_classes)
+        print(f"  NMI={nmi:.3f}  AMI={ami:.3f}")
+        results[model_name] = (enc, lbl, nmi, ami)
         del encoder
         torch.cuda.empty_cache()
 
@@ -297,15 +249,21 @@ def main():
     print("\nRunning t-SNE and plotting…")
     plot_tsne_all(results, dataset_name=args.dataset, out_path=out_path, n_classes=args.n_classes)
 
-    save = {
-        m: {"encodings": results[m][0].tolist(), "labels": results[m][1].tolist()}
-        for m in results
-    }
-    out_json = ROOT / "outputs" / f"exp2_semantic_collapse_{args.dataset}.json"
-    out_json.parent.mkdir(parents=True, exist_ok=True)
+    out_dir = ROOT / "outputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    save = {}
+    for m in results:
+        enc_arr, lbl_arr, nmi, ami = results[m]
+        enc_path = out_dir / f"exp2_{args.dataset}_{m}_enc.npy"
+        lbl_path = out_dir / f"exp2_{args.dataset}_{m}_lbl.npy"
+        np.save(enc_path, enc_arr)
+        np.save(lbl_path, lbl_arr)
+        save[m] = {"encodings_path": str(enc_path), "labels_path": str(lbl_path),
+                   "nmi": nmi, "ami": ami}
+    out_json = out_dir / f"exp2_semantic_collapse_{args.dataset}.json"
     with open(out_json, "w") as f:
-        json.dump(save, f)
-    print(f"Raw encodings saved → {out_json}")
+        json.dump(save, f, indent=2)
+    print(f"Results saved → {out_json}")
 
 
 if __name__ == "__main__":

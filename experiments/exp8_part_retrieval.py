@@ -32,7 +32,9 @@ import argparse
 import json
 import os
 import sys, io
-sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
+_fd = sys.stdout.fileno()
+if _fd >= 0:
+    sys.stdout = io.TextIOWrapper(open(_fd, "wb", 0), write_through=True)
 from pathlib import Path
 from collections import defaultdict
 
@@ -52,6 +54,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.datasets import get_dataset, SHAPE_NET_PART_SEG_CLASSES
 from core.trainer import unpack_encoder_output
+from experiments.exp1_retrieval_eval import ProxyAnchorLoss
 
 DEVICE    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_ROOT = str(ROOT / "data")
@@ -568,11 +571,19 @@ def compute_part_map_at_k(
                 })
 
         rel = np.array(rel[:k])
-        if rel.sum() == 0:
+        # Denominator = shapes in gallery satisfying both same-class AND part-IoU
+        n_relevant_in_gallery = sum(
+            1 for r_id in db_ids
+            if r_id != q_id
+            and class_labels[r_id] == q_cls
+            and part_iou(q_dist, part_dists[r_id]) >= part_iou_threshold
+        )
+        denom = min(n_relevant_in_gallery, k)
+        if denom == 0:
             aps.append(0.0)
         else:
             precision_at_k = rel.cumsum() / np.arange(1, len(rel) + 1)
-            aps.append(float((precision_at_k * rel).sum() / rel.sum()))
+            aps.append(float((precision_at_k * rel).sum() / denom))
 
         if return_profiles:
             profiles.append({
@@ -641,62 +652,6 @@ def _build_encoder(name: str):
     return registry[name]()
 
 
-class ProxyAnchorLoss(torch.nn.Module):
-    """
-    Proxy-Anchor Loss (Kim et al., CVPR 2020).
-
-    Maintains one learnable proxy per class in embedding space.
-    For each batch, pulls embeddings toward their class proxy and
-    pushes them away from all other proxies, with per-proxy margins.
-
-    This directly optimises the embedding space for retrieval — unlike
-    cross-entropy which only requires class separability, proxies force
-    tight intra-class clusters and large inter-class margins.
-
-    Reference: https://arxiv.org/abs/2003.13911
-    """
-    def __init__(self, num_classes: int, embed_dim: int,
-                 margin: float = 0.1, alpha: float = 32.0):
-        super().__init__()
-        self.proxies = torch.nn.Parameter(
-            torch.randn(num_classes, embed_dim)
-        )
-        torch.nn.init.kaiming_normal_(self.proxies, mode="fan_out")
-        self.num_classes = num_classes
-        self.margin      = margin
-        self.alpha       = alpha
-
-    def forward(self, embeddings: torch.Tensor,
-                labels: torch.Tensor) -> torch.Tensor:
-        """
-        embeddings : (B, D) — L2-normalised
-        labels     : (B,)   — class indices
-        """
-        import torch.nn.functional as F
-        P = F.normalize(self.proxies, dim=1)           # (C, D)
-        E = F.normalize(embeddings,   dim=1)           # (B, D)
-
-        # Cosine similarities: (B, C)
-        sim = E @ P.T
-
-        # One-hot positive mask: (B, C)
-        pos_mask = torch.zeros_like(sim)
-        pos_mask.scatter_(1, labels.unsqueeze(1), 1.0)
-        neg_mask = 1.0 - pos_mask
-
-        # Per-proxy positive and negative terms (sum over batch dimension)
-        # Positive: proxies that have at least one positive in batch
-        pos_exp = torch.exp(-self.alpha * (sim - self.margin)) * pos_mask
-        neg_exp = torch.exp( self.alpha * (sim + self.margin)) * neg_mask
-
-        # Only include proxies that have positives in this batch
-        with_pos = (pos_mask.sum(0) > 0)              # (C,)
-
-        loss_pos = (torch.log(1 + pos_exp.sum(0)) * with_pos).sum()
-        loss_neg = (torch.log(1 + neg_exp.sum(0)) * with_pos).sum()
-
-        return (loss_pos + loss_neg) / with_pos.sum().clamp(min=1)
-
 
 def _quick_val_maps(encoder, points_list, class_labels, part_dists=None,
                     batch_size=8, n_per_class=20, k=5, part_iou_threshold=0.3):
@@ -713,7 +668,7 @@ def _quick_val_maps(encoder, points_list, class_labels, part_dists=None,
 
     encoder.eval()
     all_enc = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for i in range(0, len(sample_ids), batch_size):
             chunk = sample_ids[i:i + batch_size]
             pts = torch.from_numpy(
@@ -822,17 +777,15 @@ def quick_train_encoder(encoder, dataset_name: str,
     enc_dim  = z.shape[-1]
     num_cls  = int(getattr(getattr(ds, "dataset", ds), "num_classes", 16))
 
-    if loss == "proxy_anchor":
-        criterion = ProxyAnchorLoss(num_cls, enc_dim,
+    n_part_classes = getattr(getattr(ds, "dataset", ds), "num_part_classes", 50)
+
+    if loss in ("proxy_anchor", "part_proxy_anchor"):
+        n_proxies = n_part_classes if loss == "part_proxy_anchor" else num_cls
+        criterion = ProxyAnchorLoss(n_proxies, enc_dim,
                                     margin=0.1, alpha=32.0).to(DEVICE)
-        opt = optim.Adam(
-            list(encoder.parameters()) + list(criterion.parameters()),
-            lr=1e-4, weight_decay=1e-4,
-        )
-        # Separate higher LR for proxies (common practice)
         opt = optim.Adam([
-            {"params": encoder.parameters(),    "lr": 1e-4},
-            {"params": criterion.parameters(),  "lr": 1e-3},
+            {"params": encoder.parameters(),   "lr": 1e-4},
+            {"params": criterion.parameters(), "lr": 1e-3},
         ], weight_decay=1e-4)
         scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-6)
         head = None
@@ -865,6 +818,7 @@ def quick_train_encoder(encoder, dataset_name: str,
         for batch in loader:
             pts = batch[0] if isinstance(batch, (tuple, list)) else batch
             lbl = batch[1] if isinstance(batch, (tuple, list)) else torch.zeros(pts.shape[0], dtype=torch.long)
+            part_lbl = batch[2] if isinstance(batch, (tuple, list)) and len(batch) >= 3 else None
             if isinstance(batch, (tuple, list)) and len(batch) >= 3:
                 pts, lbl = batch[0], batch[1]
             pts = pts.float().to(DEVICE)
@@ -874,7 +828,14 @@ def quick_train_encoder(encoder, dataset_name: str,
             pts = _rand_rot(pts.shape[0]) @ pts
             opt.zero_grad()
             z, _ = unpack_encoder_output(encoder(pts))
-            if loss == "proxy_anchor":
+            if loss == "part_proxy_anchor":
+                # Dominant part label per shape: mode of per-point part labels
+                if part_lbl is not None:
+                    train_lbl = part_lbl.mode(dim=1).values.long().to(DEVICE)
+                else:
+                    train_lbl = lbl  # fallback if dataset has no part labels
+                batch_loss = criterion(z, train_lbl)
+            elif loss == "proxy_anchor":
                 batch_loss = criterion(z, lbl)
             else:
                 batch_loss = criterion(head(z), lbl)
@@ -926,13 +887,10 @@ def quick_train_encoder(encoder, dataset_name: str,
 
     encoder.eval()
     return tb_writer
-    if head is not None:
-        del head
-    del opt, criterion, loader, ds
-    torch.cuda.empty_cache()
+    # cleanup handled by caller
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def encode_all(encoder, points_list: list[np.ndarray],
                batch_size: int = 16) -> np.ndarray:
     """
@@ -1215,113 +1173,118 @@ def run_experiment(args):
                 probs_str = ", ".join(f"{n}={p:.2f}" for n, p in r['part_probs'][:4])
                 print(f"      result {i+1}: shape {r['shape_id']}  iou={r['part_iou']:.2f}  rel={r['relevant']}  [{probs_str}]")
 
-    # ── Global embedding baselines ─────────────────────────────────────────────
-    # Large models (DiPVNet, RISA) need a smaller batch size to fit on GPU.
+    # ── Global embedding baselines (class-level + part-level) ─────────────────
     _SMALL_BATCH_MODELS = {"DiPVNet", "RISA", "VNN", "PointTransformer", "RINet"}
     _BATCH_SIZE = {m: (4 if m in _SMALL_BATCH_MODELS else 16) for m in args.models}
 
-    baseline_results = {}
+    baseline_results    = {}  # class-level proxy anchor
+    part_aware_results  = {}  # part-level proxy anchor
+
     for model_name in args.models:
-        print(f"\n{'='*60}\nGlobal embedding baseline: {model_name}  [{args.loss}]")
-        tb_writer = None
-        try:
-            torch.cuda.empty_cache()
-            encoder = _build_encoder(model_name).to(DEVICE)
-            if args.checkpoint:
-                ckpt = torch.load(args.checkpoint, map_location=DEVICE)
-                missing, unexpected = encoder.load_state_dict(ckpt, strict=False)
-                if missing or unexpected:
-                    print(f"  [checkpoint] missing={len(missing)} unexpected={len(unexpected)} keys")
+        for loss_mode in ("proxy_anchor", "part_proxy_anchor"):
+            print(f"\n{'='*60}\nModel: {model_name}  loss: {loss_mode}")
+            tb_writer = None
+            encoder   = None
+            try:
+                torch.cuda.empty_cache()
+                encoder = _build_encoder(model_name).to(DEVICE)
+                ckpt_suffix = "part" if loss_mode == "part_proxy_anchor" else "class"
+                ckpt_path = (
+                    str(Path(args.checkpoint_dir) / f"{model_name}_shapenet_{ckpt_suffix}.pt")
+                    if args.checkpoint_dir else None
+                )
+                if ckpt_path and Path(ckpt_path).exists() and not args.force_retrain:
+                    encoder.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
+                    print(f"  [checkpoint] Loaded {ckpt_path} — skipping training")
                 else:
-                    print(f"  [checkpoint] Loaded {args.checkpoint}")
-            tb_writer = quick_train_encoder(encoder, "shapenet",
-                                epochs=args.epochs, seed=args.seed,
-                                loss=args.loss,
-                                batch_size=_BATCH_SIZE[model_name],
-                                val_points=points_list,
-                                val_labels=class_labels,
-                                val_part_dists=part_dists if part_labels_list is not None else None,
-                                val_part_iou_threshold=args.part_iou_threshold,
-                                val_every=args.val_every,
-                                save_dir=args.save_dir)
-            embeddings = encode_all(encoder, points_list,
-                                    batch_size=min(8, _BATCH_SIZE[model_name]))
-        except Exception as e:
-            print(f"  Error building/training {model_name}: {e} — skipping")
+                    tb_writer = quick_train_encoder(
+                        encoder, "shapenet",
+                        epochs=args.epochs, seed=args.seed,
+                        loss=loss_mode,
+                        batch_size=_BATCH_SIZE[model_name],
+                        val_points=points_list,
+                        val_labels=class_labels,
+                        val_part_dists=part_dists if part_labels_list is not None else None,
+                        val_part_iou_threshold=args.part_iou_threshold,
+                        val_every=args.val_every,
+                        save_dir=args.checkpoint_dir,
+                    )
+                embeddings = encode_all(encoder, points_list,
+                                        batch_size=min(8, _BATCH_SIZE[model_name]))
+            except Exception as e:
+                print(f"  Error with {model_name}/{loss_mode}: {e} — skipping")
+                if tb_writer is not None:
+                    tb_writer.close()
+                    tb_writer = None
+                continue
+            finally:
+                if encoder is not None:
+                    encoder.cpu()
+                    del encoder
+                    encoder = None
+                torch.cuda.empty_cache()
+
+            def make_global_fn(embs):
+                def fn(q_id):
+                    return global_embedding_retrieval_fn(q_id, embs, k=args.k_eval)
+                return fn
+
+            global_fn   = make_global_fn(embeddings)
+            g_class_map = compute_class_map_at_k(
+                query_ids, global_fn, class_labels, k=args.k_eval
+            )
+            g_part_map, g_profiles = None, []
+            if part_labels_list is not None:
+                g_part_map, g_profiles = compute_part_map_at_k(
+                    query_ids, list(range(N)), global_fn,
+                    class_labels, part_dists, k=args.k_eval,
+                    part_iou_threshold=args.part_iou_threshold,
+                    return_profiles=True,
+                    part_mean_profiles=part_mean_profiles,
+                )
+
+            entry = {"class_mAP@5": round(g_class_map, 4)}
+            if g_part_map is not None:
+                entry["part_mAP@5"]    = round(g_part_map, 4)
+                entry["part_profiles"] = g_profiles
+
+            if loss_mode == "part_proxy_anchor":
+                part_aware_results[model_name] = entry
+            else:
+                baseline_results[model_name] = entry
+
             if tb_writer is not None:
+                tb_writer.add_scalar("eval/class_mAP@5", g_class_map, args.epochs)
+                if g_part_map is not None:
+                    tb_writer.add_scalar("eval/part_mAP@5", g_part_map, args.epochs)
                 tb_writer.close()
                 tb_writer = None
-            continue
-        finally:
-            if encoder is not None:
-                encoder.cpu()
-                del encoder
-                encoder = None
-            torch.cuda.empty_cache()
 
-        def make_global_fn(embs):
-            def fn(q_id):
-                return global_embedding_retrieval_fn(q_id, embs, k=args.k_eval)
-            return fn
-
-        global_fn = make_global_fn(embeddings)
-
-        g_class_map = compute_class_map_at_k(
-            query_ids, global_fn, class_labels, k=args.k_eval
-        )
-        g_part_map = None
-        g_profiles = []
-        if part_labels_list is not None:
-            g_part_map, g_profiles = compute_part_map_at_k(
-                query_ids, list(range(N)), global_fn,
-                class_labels, part_dists, k=args.k_eval,
-                part_iou_threshold=args.part_iou_threshold,
-                return_profiles=True,
-                part_mean_profiles=part_mean_profiles,
-            )
-
-        baseline_results[model_name] = {
-            "class_mAP@5": round(g_class_map, 4),
-        }
-        if g_part_map is not None:
-            baseline_results[model_name]["part_mAP@5"] = round(g_part_map, 4)
-            baseline_results[model_name]["part_profiles"] = g_profiles
-
-        if tb_writer is not None:
-            tb_writer.add_scalar("eval/class_mAP@5", g_class_map, args.epochs)
+            print(f"  class-mAP@5 = {g_class_map:.4f}")
             if g_part_map is not None:
-                tb_writer.add_scalar("eval/part_mAP@5", g_part_map, args.epochs)
-            tb_writer.close()
-            tb_writer = None
-
-        print(f"  class-mAP@5 = {g_class_map:.4f}")
-        if g_part_map is not None:
-            print(f"  part-mAP@5  = {g_part_map:.4f}")
-            print(f"  Sample query part profiles (first 3 queries):")
-            for qp in g_profiles[:3]:
-                print(f"    query {qp['query_id']} ({qp['query_class']})  AP={qp['ap']:.4f}")
-                print(f"      query parts: " + ", ".join(f"{n}={p:.2f}" for n, p in qp['query_parts'][:4]))
-                for i, r in enumerate(qp['results'][:3]):
-                    probs_str = ", ".join(f"{n}={p:.2f}" for n, p in r['part_probs'][:4])
-                    print(f"      result {i+1}: shape {r['shape_id']}  iou={r['part_iou']:.2f}  rel={r['relevant']}  [{probs_str}]")
+                print(f"  part-mAP@5  = {g_part_map:.4f}")
 
     # ── Summary table ──────────────────────────────────────────────────────────
-    print(f"\n{'='*60}")
-    print(f"{'Method':<22} {'class-mAP@5':>12} {'part-mAP@5':>12}")
-    print(f"{'-'*46}")
-    print(f"{'3D-SIFT-InvIndex':<22} "
+    print(f"\n{'='*70}")
+    print(f"{'Method':<32} {'class-mAP@5':>12} {'part-mAP@5':>12}")
+    print("-" * 58)
+    print(f"{'3D-SIFT-InvIndex':<32} "
           f"{results_dict['class_mAP@5']:>12.4f} "
           f"{results_dict.get('part_mAP@5', float('nan')):>12.4f}")
     for m, r in baseline_results.items():
-        print(f"{m:<22} {r['class_mAP@5']:>12.4f} "
+        print(f"{m + ' (class-proxy)':<32} {r['class_mAP@5']:>12.4f} "
+              f"{r.get('part_mAP@5', float('nan')):>12.4f}")
+    for m, r in part_aware_results.items():
+        print(f"{m + ' (part-proxy)':<32} {r['class_mAP@5']:>12.4f} "
               f"{r.get('part_mAP@5', float('nan')):>12.4f}")
 
     # ── Save results ───────────────────────────────────────────────────────────
     out = {
-        "sift_inverted_index":  results_dict,
-        "sift_part_profiles":   sift_profiles,
-        "global_baselines":     baseline_results,
-        "attribute_words":      {k: v for k, v in attribute_words.items()},
+        "sift_inverted_index":     results_dict,
+        "sift_part_profiles":      sift_profiles,
+        "global_baselines_class":  baseline_results,
+        "global_baselines_part":   part_aware_results,
+        "attribute_words":         {k: v for k, v in attribute_words.items()},
         "config": vars(args),
     }
     out_path = ROOT / args.out
@@ -1366,9 +1329,10 @@ def main():
                         default=["PointNet++", "DGCNN", "DiPVNet", "RINet", "RISA"],
                         help="Global embedding models to compare against")
     parser.add_argument("--loss",    type=str, default="proxy_anchor",
-                        choices=["classification", "proxy_anchor"],
-                        help="Training loss: 'classification' (cross-entropy) "
-                             "or 'proxy_anchor' (metric learning, better for retrieval)")
+                        choices=["classification", "proxy_anchor", "part_proxy_anchor"],
+                        help="Training loss for global embedding baselines. "
+                             "Note: exp8 always runs both proxy_anchor and part_proxy_anchor "
+                             "for comparison; this flag is ignored.")
     parser.add_argument("--epochs",  type=int, default=40)
     parser.add_argument("--val_every", type=int, default=10,
                         help="Run validation every N epochs during training (default: 10)")
@@ -1378,15 +1342,17 @@ def main():
                         default="outputs/exp8_sift_cache.npz",
                         help="Path to cache SIFT descriptors (.npz). "
                              "Loaded if exists, saved otherwise.")
-    # Transfer learning
-    parser.add_argument("--checkpoint", type=str, default=None,
-                        help="Path to a .pt checkpoint to load before training (transfer learning)")
-    # Output
-    parser.add_argument("--save_dir", type=str, default="outputs/checkpoints",
-                        help="Directory to save model checkpoints after training")
+    parser.add_argument("--checkpoint_dir", type=str, default=None,
+                        help="Directory to save/load checkpoints. Saves as <dir>/<model>_shapenet.pt")
+    parser.add_argument("--force_retrain",  action="store_true",
+                        help="Retrain even if a checkpoint already exists")
     parser.add_argument("--out",  default="outputs/exp8_part_retrieval.json")
     args = parser.parse_args()
 
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
     run_experiment(args)
 
 

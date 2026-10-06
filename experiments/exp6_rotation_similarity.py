@@ -19,7 +19,9 @@ Usage:
 import argparse
 import json
 import sys, io
-sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
+_fd = sys.stdout.fileno()
+if _fd >= 0:
+    sys.stdout = io.TextIOWrapper(open(_fd, "wb", 0), write_through=True)
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.datasets import get_dataset
 from core.trainer import unpack_encoder_output
-from experiments.exp1_retrieval_eval import quick_train, rotation_by_angle
+from experiments.exp1_retrieval_eval import train_ir, rotation_by_angle
 
 DEVICE    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_ROOT = str(ROOT / "data")
@@ -164,10 +166,16 @@ def main():
     parser.add_argument("--n_obj",    type=int, default=N_OBJECTS,
                         help="Objects per class to average over")
     parser.add_argument("--seed",     type=int, default=42)
+    parser.add_argument("--checkpoint_dir", type=str, default=None,
+                        help="Directory to save/load checkpoints. Saves as <dir>/<model>_<dataset>.pt")
+    parser.add_argument("--force_retrain",  action="store_true")
     parser.add_argument("--out",      default="outputs/exp6_rotation_similarity.json")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
     print(f"Device: {DEVICE}")
 
     kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
@@ -187,7 +195,12 @@ def main():
     for model_name, model_cls in registry.items():
         print(f"\n{'='*60}\nModel: {model_name}")
         encoder = _build_encoder(model_name, model_cls).to(DEVICE)
-        quick_train(encoder, args.dataset, epochs=args.epochs, seed=args.seed)
+        ckpt_path = (
+            str(Path(args.checkpoint_dir) / f"{model_name}_{args.dataset}.pt")
+            if args.checkpoint_dir else None
+        )
+        train_ir(encoder, args.dataset, epochs=args.epochs, seed=args.seed,
+                 checkpoint_path=ckpt_path, force_retrain=args.force_retrain)
 
         curve = compute_similarity_curve(encoder, objects, ANGLES)
         results[model_name] = {"angles": ANGLES, "similarity": curve}

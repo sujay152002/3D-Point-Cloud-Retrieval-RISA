@@ -19,7 +19,9 @@ Usage:
 import argparse
 import json
 import sys, io
-sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
+_fd = sys.stdout.fileno()
+if _fd >= 0:
+    sys.stdout = io.TextIOWrapper(open(_fd, "wb", 0), write_through=True)
 from pathlib import Path
 
 import numpy as np
@@ -35,7 +37,7 @@ from core.datasets import get_dataset
 from core.trainer import unpack_encoder_output
 from experiments.exp1_retrieval_eval import (
     encode_dataset, encode_rotated, recall_at_k, mean_ap_at_k,
-    rotation_by_angle, quick_train,
+    train_ir,
 )
 
 DEVICE    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -108,7 +110,7 @@ class RISAXYZBaseline(nn.Module):
 
 # ── TTA wrapper ───────────────────────────────────────────────────────────────
 
-@torch.no_grad()
+@torch.inference_mode()
 def encode_with_tta(encoder, dataset, n_votes=12, batch_size=8):
     """Test-time augmentation: average encodings over n_votes random rotations."""
     loader = torch.utils.data.DataLoader(
@@ -139,19 +141,28 @@ def encode_with_tta(encoder, dataset, n_votes=12, batch_size=8):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset",  default="modelnet40")
-    parser.add_argument("--epochs",   type=int, default=20)
-    parser.add_argument("--n_votes",  type=int, default=12,
+    parser.add_argument("--dataset",        default="modelnet40")
+    parser.add_argument("--epochs",          type=int, default=20)
+    parser.add_argument("--n_votes",         type=int, default=12,
                         help="TTA votes for condition C")
-    parser.add_argument("--seed",     type=int, default=42)
-    parser.add_argument("--out",      default="outputs/exp3_ablation.json")
+    parser.add_argument("--seed",            type=int, default=42)
+    parser.add_argument("--checkpoint_dir",  type=str, default=None,
+                        help="Directory to save/load checkpoints. Saves as <dir>/<cond>.pt")
+    parser.add_argument("--force_retrain",   action="store_true",
+                        help="Retrain even if a checkpoint already exists, overwriting it")
+    parser.add_argument("--out",             default="outputs/exp3_ablation.json")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    np.random.seed(args.seed)
+    torch.backends.cudnn.deterministic = True
     print(f"Device: {DEVICE}")
 
     kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
-    test_ds = get_dataset(args.dataset, split="test", root=DATA_ROOT,
+    test_ds = get_dataset(args.dataset, split="test",  root=DATA_ROOT,
+                          num_points=N_POINTS, **kwargs)
+    val_ds  = get_dataset(args.dataset, split="val",   root=DATA_ROOT,
                           num_points=N_POINTS, **kwargs)
 
     from models import RotationInvariantSparseAttention, DGCNNEncoder
@@ -176,54 +187,83 @@ def main():
         print(f"\n{'='*60}\nCondition: {cond_name}")
         encoder = encoder.to(DEVICE)
 
-        # All conditions trained with SO(3) augmentation
-        quick_train(encoder, args.dataset, epochs=args.epochs, seed=args.seed)
+        # All conditions trained with Proxy Anchor + SO(3) augmentation
+        ckpt_path = (
+            str(Path(ROOT / args.checkpoint_dir) / f"{cond_name}.pt")
+            if args.checkpoint_dir else None
+        )
+        train_ir(encoder, args.dataset, epochs=args.epochs, seed=args.seed,
+                 checkpoint_path=ckpt_path, force_retrain=args.force_retrain)
 
-        # Build canonical database
+        # gallery = test set (canonical), query = val set (disjoint)
         db_enc, db_lbl = encode_dataset(encoder, test_ds)
+        q0_enc, q_lbl  = encode_dataset(encoder, val_ds)
 
         angle_results = []
+        db_enc_n = F.normalize(db_enc, dim=1)
         for theta in ANGLES:
-            if theta == 0:
-                if cond_name == "C_DGCNN_TTA":
-                    q_enc = encode_with_tta(encoder, test_ds, n_votes=args.n_votes)
+            r1_vals, r5_vals, r10_vals, map5_vals, map10_vals = [], [], [], [], []
+            n_trials = 1 if theta == 0 else 5  # average over 5 random axes per angle
+            for _ in range(n_trials):
+                if theta == 0:
+                    if cond_name == "C_DGCNN_TTA":
+                        q_enc = encode_with_tta(encoder, val_ds, n_votes=args.n_votes)
+                    else:
+                        q_enc = q0_enc
                 else:
-                    q_enc = db_enc
-            else:
-                R = rotation_by_angle(theta, axis="y", device=DEVICE)
-                if cond_name == "C_DGCNN_TTA":
-                    # TTA on rotated queries
-                    loader = torch.utils.data.DataLoader(
-                        test_ds, batch_size=8, shuffle=False, drop_last=False
-                    )
-                    all_enc = []
-                    with torch.no_grad():
-                        for batch in loader:
-                            pts = batch[0] if isinstance(batch, (tuple, list)) else batch
-                            if isinstance(batch, (tuple, list)) and len(batch) == 3:
-                                pts = batch[0]
-                            pts = pts.float().to(DEVICE)
-                            if pts.shape[1] != 3:
-                                pts = pts.permute(0, 2, 1)
-                            pts = R.to(DEVICE) @ pts
-                            B = pts.shape[0]
-                            vote_enc = None
-                            for _ in range(args.n_votes):
-                                Qv, _ = torch.linalg.qr(torch.randn(B, 3, 3, device=DEVICE))
-                                Qv[:, :, 0] *= torch.linalg.det(Qv).sign().view(B, 1)
-                                pts_r = Qv @ pts
-                                enc, _ = unpack_encoder_output(encoder(pts_r))
-                                vote_enc = enc if vote_enc is None else vote_enc + enc
-                            all_enc.append((vote_enc / args.n_votes).cpu())
-                    q_enc = torch.cat(all_enc)
-                else:
-                    q_enc = encode_rotated(encoder, test_ds, R)
+                    # Random-axis Rodrigues rotation at fixed angle magnitude
+                    axis = F.normalize(torch.randn(3, device=DEVICE), dim=0)
+                    rad  = np.radians(theta)
+                    c, s = float(np.cos(rad)), float(np.sin(rad))
+                    K = torch.tensor([
+                        [0,        -axis[2],  axis[1]],
+                        [ axis[2],  0,        -axis[0]],
+                        [-axis[1],  axis[0],   0],
+                    ], device=DEVICE)
+                    R = (c * torch.eye(3, device=DEVICE)
+                         + s * K
+                         + (1 - c) * torch.outer(axis, axis))
+                    if cond_name == "C_DGCNN_TTA":
+                        loader = torch.utils.data.DataLoader(
+                            val_ds, batch_size=8, shuffle=False, drop_last=False
+                        )
+                        all_enc = []
+                        with torch.inference_mode():
+                            for batch in loader:
+                                pts = batch[0] if isinstance(batch, (tuple, list)) else batch
+                                if isinstance(batch, (tuple, list)) and len(batch) == 3:
+                                    pts = batch[0]
+                                pts = pts.float().to(DEVICE)
+                                if pts.shape[1] != 3:
+                                    pts = pts.permute(0, 2, 1)
+                                pts = R @ pts
+                                B = pts.shape[0]
+                                vote_enc = None
+                                for _ in range(args.n_votes):
+                                    Qv, _ = torch.linalg.qr(torch.randn(B, 3, 3, device=DEVICE))
+                                    Qv[:, :, 0] *= torch.linalg.det(Qv).sign().view(B, 1)
+                                    pts_r = Qv @ pts
+                                    enc, _ = unpack_encoder_output(encoder(pts_r))
+                                    vote_enc = enc if vote_enc is None else vote_enc + enc
+                                all_enc.append((vote_enc / args.n_votes).cpu())
+                        q_enc = torch.cat(all_enc)
+                    else:
+                        q_enc = encode_rotated(encoder, val_ds, R)
 
-            r1   = recall_at_k(q_enc, db_enc, db_lbl, db_lbl, k=1)
-            r5   = recall_at_k(q_enc, db_enc, db_lbl, db_lbl, k=5)
-            map5 = mean_ap_at_k(q_enc, db_enc, db_lbl, db_lbl, k=5)
-            angle_results.append({"angle": theta, "r1": r1, "r5": r5, "map5": map5})
-            print(f"  θ={theta:5.1f}°  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}",
+                q_n = F.normalize(q_enc, dim=1)
+                sim = q_n @ db_enc_n.T
+                r1_vals.append(recall_at_k(sim, q_lbl, db_lbl, k=1))
+                r5_vals.append(recall_at_k(sim, q_lbl, db_lbl, k=5))
+                r10_vals.append(recall_at_k(sim, q_lbl, db_lbl, k=10))
+                map5_vals.append(mean_ap_at_k(sim, q_lbl, db_lbl, k=5))
+                map10_vals.append(mean_ap_at_k(sim, q_lbl, db_lbl, k=10))
+
+            r1, r5, r10 = np.mean(r1_vals), np.mean(r5_vals), np.mean(r10_vals)
+            map5, map10 = np.mean(map5_vals), np.mean(map10_vals)
+            angle_results.append({"angle": theta, "r1": r1, "r5": r5, "r10": r10,
+                                   "map5": map5, "map10": map10})
+            print(f"  θ={theta:5.1f}°  R@1={r1:.3f}  R@5={r5:.3f}  R@10={r10:.3f}"
+                  f"  mAP@5={map5:.3f}  mAP@10={map10:.3f}",
                   flush=True)
 
         results[cond_name] = angle_results
@@ -240,7 +280,7 @@ def main():
     print(f"\n{'='*70}")
     print(f"ABLATION SUMMARY — {args.dataset} — Recall@1 at key angles")
     print(f"{'Condition':<22} {'0°':>6} {'45°':>6} {'90°':>6} {'180°':>6}")
-    print("-" * 50)
+    print("-" * 54)
     key_angles = {0, 45, 90, 180}
     for cond, angle_res in results.items():
         row = {r["angle"]: r["r1"] for r in angle_res}
