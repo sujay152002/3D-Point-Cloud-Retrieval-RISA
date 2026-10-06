@@ -303,8 +303,8 @@ def build_exp1(data):
         "(4) practical implications for real-world deployment where object orientation is unknown."
     )
     return dict(
-        id="exp1", title="Exp 1 — Cross-Dataset Retrieval",
-        question="Do rotation-invariant features generalise across datasets without retraining?",
+        id="exp1", title="Exp 1 — Rotation Robustness",
+        question="How does retrieval performance degrade as rotation angle increases from 0° to 180°?",
         info=info_grid(
             Models=tag_list(models),
             Datasets=tag_list(datasets),
@@ -869,7 +869,7 @@ def render_panel(exp, active=False):
     )
 
 EXP_OVERVIEW = [
-    ("Exp 1",  "Cross-Dataset Retrieval",       "Do rotation-invariant features generalise across datasets without retraining?",
+    ("Exp 1",  "Rotation Robustness",             "How does retrieval performance degrade as rotation angle increases from 0° to 180°?",
      "Evaluates R@1 across 19 SO(3) rotation angles (0°→180°) on ShapeNet, comparing PointNet++, DGCNN, DiPVNet and RISA."),
     ("Exp 2",  "Semantic Collapse",              "Do non-invariant models collapse semantically distinct shapes into the same embedding region?",
      "t-SNE of 512-d embeddings for 1280 ShapeNet shapes (8 classes). Well-separated clusters indicate discriminative embeddings."),
