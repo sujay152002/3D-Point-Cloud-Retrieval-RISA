@@ -721,17 +721,27 @@ def build_exp10(data):
             table=tbl, ai="<em>Results pending.</em>",
         )
     priors = list(data.keys())
-    prior_desc = {
-        "full_N":              "All 1024 points (baseline)",
-        "random_K":            "Random 256 points (lower bound)",
-        "fps_K":               "Farthest point sampling",
-        "eigenentropy_K":      "Top-K by eigenentropy (geometric complexity)",
-        "surface_var_K":       "Top-K by surface variation",
-        "curvature_K":         "Top-K by anisotropy",
-        "salient_K":           "Top-K by enc-token attention (learned)",
-        "aggregate_K":         "FPS centroids + ball-query max-pool (lossless compression)",
-        "knn_dist_entropy_K":  "Top-K by k-NN distance entropy (diverse neighborhoods)",
+    prior_meta = {
+        "full_N":             ("All 1024 points (baseline)",
+                               "No subsampling — all N points pass through attention. Compute upper bound. O(N²) attention cost."),
+        "random_K":           ("Random K points (lower bound)",
+                               "Uniformly random subset of 256 points. No geometric reasoning. Serves as the information lower bound."),
+        "fps_K":              ("Farthest Point Sampling",
+                               "Iteratively picks the point farthest from already-selected points. Maximises spatial coverage across the shape."),
+        "eigenentropy_K":     ("Eigenentropy — geometric complexity",
+                               "Selects points where the local PCA eigenvalue distribution has highest entropy (p=e/Σe). High entropy = isotropic, complex neighborhoods."),
+        "surface_var_K":      ("Surface Variation — e₃ / Σe",
+                               "Selects points with highest ratio of smallest to total eigenvalue. Targets locally flat or high-variation surface regions."),
+        "curvature_K":        ("PCA Curvature — e₁ / Σe",
+                               "Selects points where the smallest eigenvalue dominates — corners, edges, and high-curvature regions that are most discriminative."),
+        "salient_K":          ("Learned Saliency — enc-token attention",
+                               "Uses cross-attention weights from the first block's encoding token to score each point. Data-driven — learns which points matter for retrieval."),
+        "aggregate_K":        ("Aggregate — FPS + ball-query max-pool",
+                               "FPS centroids aggregate their local neighborhood via max-pool before attention. Lossless compression: each token summarises N/K points."),
+        "knn_dist_entropy_K": ("k-NN Distance Entropy",
+                               "Selects points with highest entropy in their k-NN distance distribution (using actual distances). Targets points with geometrically diverse neighborhoods — maximally informative for the neighbor-distance MLP."),
     }
+    prior_desc = {k: v[0] for k, v in prior_meta.items()}
     rows = []
     for p in priors:
         ka = key_angles(data[p])
@@ -747,6 +757,22 @@ def build_exp10(data):
         th("Prior", "Description", "R@1 0°", "R@1 45°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
         rows, "ModelNet40 — K=256 from N=1024 — R@1 (%) and mAP@5 (%)"
     )
+    prior_colors = {
+        p: COLORS[i % len(COLORS)] for i, p in enumerate(
+            ["full_N","random_K","fps_K","eigenentropy_K","surface_var_K",
+             "curvature_K","salient_K","aggregate_K","knn_dist_entropy_K"]
+        )
+    }
+    legend_cards = "".join(
+        f'<div class="prior-card">'
+        f'<div class="prior-dot" style="background:{prior_colors.get(p, "#8b949e")}"></div>'
+        f'<div><div class="prior-name">{p}</div>'
+        f'<div class="prior-short">{prior_meta.get(p, ("",""))[0]}</div>'
+        f'<div class="prior-long">{prior_meta.get(p, ("",""))[1]}</div></div>'
+        f'</div>'
+        for p in priors
+    )
+    legend = f'<div class="prior-legend"><h3 class="ov-section-title" style="margin-bottom:.8rem">Prior Descriptions</h3><div class="prior-grid">{legend_cards}</div></div>'
     series10 = [
         (p, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[p]])
         for i, p in enumerate(priors)
@@ -785,7 +811,7 @@ def build_exp10(data):
             **{"K / N": "256 / 1024"},
             Priors=str(len(priors)),
         ),
-        table=chart10 + tbl, ai=ai,
+        table=legend + chart10 + tbl, ai=ai,
     )
 
 
@@ -953,6 +979,14 @@ footer{text-align:center;padding:2.5rem;color:#484f58;font-size:.78rem;border-to
 .tooltip{position:absolute;background:#1c2128;border:1px solid #30363d;border-radius:6px;
          padding:.4rem .7rem;font-size:.75rem;color:#e6edf3;pointer-events:none;
          opacity:0;transition:opacity .15s;white-space:nowrap;z-index:100}
+.prior-legend{margin-bottom:1.8rem}
+.prior-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.75rem}
+.prior-card{display:flex;gap:.75rem;background:rgba(22,27,34,.7);border:1px solid rgba(48,54,61,.7);
+            border-radius:8px;padding:.8rem 1rem;align-items:flex-start}
+.prior-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:.3rem}
+.prior-name{font-size:.82rem;font-weight:700;color:#e6edf3;margin-bottom:.2rem}
+.prior-short{font-size:.76rem;color:#79c0ff;margin-bottom:.2rem}
+.prior-long{font-size:.73rem;color:#8b949e;line-height:1.5}
 """
 
 JS = """
