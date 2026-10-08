@@ -154,17 +154,20 @@ def select_knn_dist_entropy(xyz, K, k_nb=16, eps=1e-8):
             d[:, j, i + j] = float('inf')
         knn_dists.append(d.topk(k_nb, dim=-1, largest=False).values)       # [B, chunk, k_nb]
     knn_dists = torch.cat(knn_dists, dim=1)                         # [B, N, k_nb]
-    knn_dists = knn_dists.clamp(min=eps)
+    # use actual distances (sqrt) so the distribution isn't dominated by far neighbors
+    knn_dists = knn_dists.sqrt().clamp(min=eps)
     p = knn_dists / knn_dists.sum(dim=-1, keepdim=True)
     entropy = -(p * p.log()).sum(dim=-1)                             # [B, N]
     return entropy.topk(K, dim=-1).indices                          # [B, K]
 
 
 def select_eigenentropy(evals, K, eps=1e-8):
-    """Top-K by eigenentropy = -sum(e_i * log(e_i)). evals: [B, N, 3] → [B, K]"""
+    """Top-K by eigenentropy = -sum(p_i * log(p_i)) where p_i = e_i / sum(e).
+    evals: [B, N, 3] → [B, K]"""
     e = evals.clamp(min=eps)
-    entropy = -(e * e.log()).sum(dim=-1)  # [B, N]
-    return entropy.topk(K, dim=-1).indices  # [B, K]
+    p = e / e.sum(dim=-1, keepdim=True)          # normalise to probability
+    entropy = -(p * p.log()).sum(dim=-1)          # [B, N]
+    return entropy.topk(K, dim=-1).indices        # [B, K]
 
 
 def select_surface_var(evals, K, eps=1e-8):
@@ -175,10 +178,12 @@ def select_surface_var(evals, K, eps=1e-8):
 
 
 def select_curvature(evals, K, eps=1e-8):
-    """Top-K by anisotropy = (e3-e1)/e3. evals: [B, N, 3] → [B, K]"""
-    e3 = evals[:, :, 2].clamp(min=eps)
-    aniso = (e3 - evals[:, :, 0]) / e3  # [B, N]
-    return aniso.topk(K, dim=-1).indices  # [B, K]
+    """Top-K by PCA curvature = e1 / (e1+e2+e3) — smallest eigenvalue ratio.
+    High values indicate locally curved / corner-like regions.
+    evals: [B, N, 3] sorted ascending → e1 <= e2 <= e3. [B, N, 3] → [B, K]"""
+    e_sum = evals.sum(dim=-1).clamp(min=eps)
+    curvature = evals[:, :, 0] / e_sum           # [B, N]
+    return curvature.topk(K, dim=-1).indices      # [B, K]
 
 
 def aggregate_fps_ballquery(features, xyz, K):
@@ -204,9 +209,6 @@ def aggregate_fps_ballquery(features, xyz, K):
     centroids = xyz_T[b_idx, centroid_idx]                     # [B, K, 3]
 
     # 2. For each centroid find M nearest neighbors among all N points
-    #    dist: [B, K, N]
-    diff = centroids.unsqueeze(3) - xyz_T.permute(0, 2, 1).unsqueeze(1)  # [B, K, 3, N]  -- wrong shape, fix below
-    # correct: centroids [B,K,3] vs xyz_T [B,N,3]
     diff = centroids.unsqueeze(2) - xyz_T.unsqueeze(1)         # [B, K, N, 3]
     dist = (diff ** 2).sum(dim=-1)                             # [B, K, N]
     nb_idx = dist.topk(M, dim=-1, largest=False).indices       # [B, K, M]
