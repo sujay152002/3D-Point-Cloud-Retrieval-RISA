@@ -30,9 +30,14 @@ Evaluation axes (vs Point-BIND):
     3. Zero-shot: query with class names not seen during projection training
 
 Usage:
+    # With a pre-trained checkpoint:
     python experiments/exp11_imagebind_retrieval.py \\
-        --prior eigenentropy_K --K 256 --epochs 50 \\
-        --risa_ckpt outputs/checkpoints/exp10_eigenentropy_K.pt
+        --prior fps_K --K 256 --epochs 50 \\
+        --risa_ckpt outputs/checkpoints/exp10_fps_K.pt
+
+    # Without a checkpoint — encoder trains automatically first:
+    python experiments/exp11_imagebind_retrieval.py \\
+        --prior fps_K --K 256 --risa_epochs 100 --epochs 50
 """
 
 import argparse
@@ -62,7 +67,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.datasets import get_dataset
 from core.trainer import unpack_encoder_output
-from experiments.exp10_prior_selection import RISAWithPrior, PRIOR_NAMES
+from experiments.exp10_prior_selection import RISAWithPrior, PRIOR_NAMES, train_condition
 from experiments.exp1_retrieval_eval import recall_at_k, mean_ap_at_k
 
 DEVICE    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -382,8 +387,12 @@ def main():
     parser.add_argument("--lr",         type=float, default=1e-4)
     parser.add_argument("--n_views",    type=int,   default=4,
                         help="Number of render views per shape for IB cache")
-    parser.add_argument("--risa_ckpt",  type=str,   default=None,
-                        help="Path to exp10 checkpoint (.pt). If None, uses random init.")
+    parser.add_argument("--risa_ckpt",   type=str,   default=None,
+                        help="Path to exp10 checkpoint (.pt). If None, trains encoder from scratch.")
+    parser.add_argument("--risa_epochs", type=int,   default=100,
+                        help="Encoder training epochs if no --risa_ckpt is provided.")
+    parser.add_argument("--risa_batch_size", type=int, default=8,
+                        help="Batch size for encoder training.")
     parser.add_argument("--dataset",    default="shapenet")
     parser.add_argument("--seed",       type=int,   default=42)
     args = parser.parse_args()
@@ -412,13 +421,24 @@ def main():
         encoding_out_dim = 512,
     ).to(DEVICE)
 
+    ckpt_dir = ROOT / "outputs" / "checkpoints"
+    auto_ckpt = ckpt_dir / f"exp10_{args.prior}.pt"
+
     if args.risa_ckpt is not None:
         ckpt = torch.load(args.risa_ckpt, map_location=DEVICE, weights_only=True)
         encoder.load_state_dict(ckpt, strict=False)
         print(f"  Loaded RISA checkpoint: {args.risa_ckpt}")
+    elif auto_ckpt.exists():
+        ckpt = torch.load(auto_ckpt, map_location=DEVICE, weights_only=True)
+        encoder.load_state_dict(ckpt, strict=False)
+        print(f"  Loaded cached RISA checkpoint: {auto_ckpt}")
     else:
-        print("  WARNING: no RISA checkpoint — using random init. "
-              "Pass --risa_ckpt to use exp10 trained weights.")
+        print(f"  No checkpoint found — training encoder ({args.risa_epochs} epochs)...")
+        train_condition(encoder, args.dataset, args.risa_epochs, args.seed,
+                        batch_size=args.risa_batch_size)
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(encoder.state_dict(), auto_ckpt)
+        print(f"  Encoder checkpoint saved → {auto_ckpt}")
 
     for p in encoder.parameters():
         p.requires_grad = False

@@ -490,10 +490,10 @@ def main():
     test_ds = get_dataset(args.dataset, split="test", root=DATA_ROOT,
                           num_points=N_POINTS, **kwargs)
 
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     results = {}
     tb = None
     if _TB_AVAILABLE:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         tb = _TBWriter(log_dir=f"runs/exp10_prior_selection_{ts}")
 
     for prior in args.priors:
@@ -523,6 +523,15 @@ def main():
             print(f"  Prototypes built: {prototypes.shape}", flush=True)
 
         train_condition(encoder, args.dataset, args.epochs, args.seed, batch_size=args.batch_size)
+
+        ckpt_dir = ROOT / "outputs" / "checkpoints"
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt_path = ckpt_dir / f"exp10_{prior}.pt"
+        ckpt_path_ts = ckpt_dir / f"exp10_{prior}_{ts}.pt"
+        torch.save(encoder.state_dict(), ckpt_path)
+        torch.save(encoder.state_dict(), ckpt_path_ts)
+        print(f"  Checkpoint saved → {ckpt_path}")
+        print(f"  Checkpoint saved → {ckpt_path_ts}")
 
         db_enc, db_lbl = encode_dataset(encoder, test_ds)
 
