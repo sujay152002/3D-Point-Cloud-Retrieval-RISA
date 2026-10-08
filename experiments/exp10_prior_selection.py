@@ -18,6 +18,8 @@ eigenentropy_K  : top-K by -sum(e_i * log(e_i)) — geometrically complex points
 surface_var_K   : top-K by e3 / (e1+e2+e3) — high local variation
 curvature_K     : top-K by (e3-e1)/e3 (anisotropy) — elongated/curved structures
 salient_K       : top-K by enc_token cross-attention weights (block 0) — learned saliency
+aggregate_K         : FPS centroids + max-pool over ball-query neighborhood — lossless compression
+knn_dist_entropy_K  : top-K by entropy of k-NN distance distribution — geometrically diverse neighborhoods
 
 Usage:
     cd /home/grad/smenon/retrieval_paper
@@ -90,6 +92,8 @@ PRIOR_NAMES = [
     "surface_var_K",
     "curvature_K",
     "salient_K",
+    "aggregate_K",
+    "knn_dist_entropy_K",
 ]
 
 
@@ -123,6 +127,39 @@ def select_fps(xyz, K):
     return selected  # [B, K]
 
 
+def select_knn_dist_entropy(xyz, K, k_nb=16, eps=1e-8):
+    """Top-K by entropy of the k-NN distance distribution.
+
+    Points with high entropy in their neighbor-distance histogram have
+    geometrically diverse neighborhoods — maximally informative for the
+    neighbor-distance MLP in GeometricInvariantExtractor.
+
+    Computes only the k_nb nearest distances per point (O(N * k_nb))
+    rather than the full N×N matrix.
+
+    xyz  : [B, 3, N]
+    k_nb : neighborhood size for distance distribution
+    returns [B, K]
+    """
+    B, _, N = xyz.shape
+    xyz_T = xyz.permute(0, 2, 1)                                    # [B, N, 3]
+    # chunk over points to avoid O(N^2) memory
+    knn_dists = []
+    chunk = 64
+    for i in range(0, N, chunk):
+        diff = xyz_T[:, i:i+chunk, :].unsqueeze(2) - xyz_T.unsqueeze(1)  # [B, chunk, N, 3]
+        d    = (diff ** 2).sum(dim=-1)                              # [B, chunk, N]
+        # mask self: point i+j has global index i+j in the N dimension
+        for j in range(d.shape[1]):
+            d[:, j, i + j] = float('inf')
+        knn_dists.append(d.topk(k_nb, dim=-1, largest=False).values)       # [B, chunk, k_nb]
+    knn_dists = torch.cat(knn_dists, dim=1)                         # [B, N, k_nb]
+    knn_dists = knn_dists.clamp(min=eps)
+    p = knn_dists / knn_dists.sum(dim=-1, keepdim=True)
+    entropy = -(p * p.log()).sum(dim=-1)                             # [B, N]
+    return entropy.topk(K, dim=-1).indices                          # [B, K]
+
+
 def select_eigenentropy(evals, K, eps=1e-8):
     """Top-K by eigenentropy = -sum(e_i * log(e_i)). evals: [B, N, 3] → [B, K]"""
     e = evals.clamp(min=eps)
@@ -142,6 +179,45 @@ def select_curvature(evals, K, eps=1e-8):
     e3 = evals[:, :, 2].clamp(min=eps)
     aniso = (e3 - evals[:, :, 0]) / e3  # [B, N]
     return aniso.topk(K, dim=-1).indices  # [B, K]
+
+
+def aggregate_fps_ballquery(features, xyz, K):
+    """Aggregate N points into K tokens via FPS centroids + ball-query max-pool.
+
+    1. FPS on XYZ → K centroid indices
+    2. For each centroid, find its M=N//K nearest neighbors (ball query)
+    3. Max-pool their 64-dim features → one token per centroid
+
+    features : [B, 64, N]
+    xyz      : [B, 3,  N]
+    returns  : aggregated [B, 64, K], centroid_idx [B, K], pos_enc_idx [B, K]
+    """
+    B, D, N = features.shape
+    M = max(1, N // K)          # neighbors per centroid
+    device = xyz.device
+
+    # 1. FPS → centroid indices [B, K]
+    centroid_idx = select_fps(xyz, K)                          # [B, K]
+    b_idx = torch.arange(B, device=device).unsqueeze(1)        # [B, 1]
+
+    xyz_T     = xyz.permute(0, 2, 1)                           # [B, N, 3]
+    centroids = xyz_T[b_idx, centroid_idx]                     # [B, K, 3]
+
+    # 2. For each centroid find M nearest neighbors among all N points
+    #    dist: [B, K, N]
+    diff = centroids.unsqueeze(3) - xyz_T.permute(0, 2, 1).unsqueeze(1)  # [B, K, 3, N]  -- wrong shape, fix below
+    # correct: centroids [B,K,3] vs xyz_T [B,N,3]
+    diff = centroids.unsqueeze(2) - xyz_T.unsqueeze(1)         # [B, K, N, 3]
+    dist = (diff ** 2).sum(dim=-1)                             # [B, K, N]
+    nb_idx = dist.topk(M, dim=-1, largest=False).indices       # [B, K, M]
+
+    # 3. Gather features and max-pool
+    feats_T  = features.permute(0, 2, 1)                       # [B, N, 64]
+    b_idx_k  = torch.arange(B, device=device).view(B,1,1).expand(B, K, M)
+    nb_feats = feats_T[b_idx_k, nb_idx]                        # [B, K, M, 64]
+    agg      = nb_feats.max(dim=2).values                      # [B, K, 64]
+
+    return agg.permute(0, 2, 1), centroid_idx                  # [B, 64, K], [B, K]
 
 
 def select_salient(features, indices, pos_enc, feature_embed, block, enc_token, K):
@@ -176,6 +252,9 @@ class RISAWithPrior(nn.Module):
 
     name = "risa"  # overridden per condition at runtime
 
+    def set_prototypes(self, prototypes): self._prototypes = prototypes
+    def set_labels(self, labels): self._labels = labels
+
     def __init__(
         self,
         prior: str = "full_N",
@@ -194,6 +273,8 @@ class RISAWithPrior(nn.Module):
         self.K                = K
         self.model_dim        = model_dim
         self.encoding_out_dim = encoding_out_dim
+        self._prototypes      = None
+        self._labels          = None
 
         from models.risa import (
             GeometricInvariantExtractor,
@@ -261,6 +342,9 @@ class RISAWithPrior(nn.Module):
         if self.prior == "curvature_K":
             return select_curvature(evals, K)
 
+        if self.prior == "knn_dist_entropy_K":
+            return select_knn_dist_entropy(xyz, K)
+
         if self.prior == "salient_K":
             enc_token = self.encoding_token.expand(B, -1, -1).to(device=xyz.device)
             return select_salient(features, indices, pos_enc, self.feature_embed, self.blocks[0], enc_token, K)
@@ -270,42 +354,41 @@ class RISAWithPrior(nn.Module):
 
         # Full-N feature extraction (no grad, cheap)
         features, indices, pos_enc = self.feature_extractor(x)
-        # features: [B, 64, N]  indices: [B, N, A]  pos_enc: [B, N, A, 9]
+        evals = features[:, 1:4, :].permute(0, 2, 1)  # [B, N, 3]
 
-        # Extract evals from _scale_features — they're embedded in features[1:4]
-        # features layout from _scale_features: [dist(1), e1,e2,e3(3), log_dist(1),
-        # dist^2(1), linearity(1)...] at fine scale, repeated at coarse scale
-        # evals are at positions 1,2,3 of the fine-scale block (first 16 features)
-        evals = features[:, 1:4, :].permute(0, 2, 1)  # [B, N, 3]  (ascending from eigh)
-
-        # Select K points
-        sel_idx = self._select(features, evals, x, indices, pos_enc)  # [B, K] or None
-
-        if sel_idx is not None:
-            K = sel_idx.shape[1]
-            b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)  # [B, K]
-
-            # features: [B, 64, N] → [B, 64, K]
-            features_K = features.permute(0, 2, 1)[b_idx, sel_idx].permute(0, 2, 1)  # [B, 64, K]
-
-            # Dense attention: each of K points attends to all K
-            indices_K = torch.arange(K, device=x.device)\
-                            .unsqueeze(0).unsqueeze(0)\
-                            .expand(B, K, -1)  # [B, K, K]
-
-            # pos_enc: [B, N, A, 9] → mean over A → [B, N, 9] → subsample → [B, K, 9]
-            # broadcast to pairwise [B, K, K, 9]
-            pos_enc_mean = pos_enc.mean(dim=2)                          # [B, N, 9]
-            pos_enc_K    = pos_enc_mean[b_idx, sel_idx]                 # [B, K, 9]
+        if self.prior == "aggregate_K":
+            K = min(self.K, N)
+            with torch.no_grad():
+                agg_features, centroid_idx = aggregate_fps_ballquery(features, x, K)  # [B, 64, K], [B, K]
+            b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
+            # use centroid's own pos_enc as representative for the cluster
+            pos_enc_mean = pos_enc.mean(dim=2)                           # [B, N, 9]
+            pos_enc_K    = pos_enc_mean[b_idx, centroid_idx]             # [B, K, 9]
             pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1) # [B, K, K, 9]
-
-            features_in  = features_K
+            indices_K    = torch.arange(K, device=x.device).unsqueeze(0).unsqueeze(0).expand(B, K, -1)
+            features_in  = agg_features
             attn_indices = indices_K
             attn_pos_enc = pos_enc_K
         else:
-            features_in  = features
-            attn_indices = indices
-            attn_pos_enc = pos_enc
+            # Select K point indices (or None for full_N)
+            sel_idx = self._select(features, evals, x, indices, pos_enc)  # [B, K] or None
+            self._labels = None
+
+            if sel_idx is not None:
+                K = sel_idx.shape[1]
+                b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
+                features_K   = features.permute(0, 2, 1)[b_idx, sel_idx].permute(0, 2, 1)
+                indices_K    = torch.arange(K, device=x.device).unsqueeze(0).unsqueeze(0).expand(B, K, -1)
+                pos_enc_mean = pos_enc.mean(dim=2)
+                pos_enc_K    = pos_enc_mean[b_idx, sel_idx]
+                pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1)
+                features_in  = features_K
+                attn_indices = indices_K
+                attn_pos_enc = pos_enc_K
+            else:
+                features_in  = features
+                attn_indices = indices
+                attn_pos_enc = pos_enc
 
         # Embed features
         B2, D, M = features_in.shape
@@ -324,14 +407,14 @@ class RISAWithPrior(nn.Module):
                 update_points = True,
             )
 
-        f         = self.features_post(f)
-        encoding  = self.encoding_post(enc_token)
+        f        = self.features_post(f)
+        encoding = self.encoding_post(enc_token)
         return encoding, f
 
 
 # ── Training ──────────────────────────────────────────────────────────────────
 
-def train_condition(encoder, dataset_name, epochs, seed, batch_size=8):
+def train_condition(encoder, dataset_name, epochs, seed, batch_size=4):
     torch.manual_seed(seed)
     ds = get_dataset(dataset_name, split="train", root=DATA_ROOT, num_points=N_POINTS)
     loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
@@ -366,6 +449,8 @@ def train_condition(encoder, dataset_name, epochs, seed, batch_size=8):
                 pts = pts.permute(0, 2, 1)
             pts = _rand_rot(pts.shape[0]) @ pts
             opt.zero_grad()
+            if encoder.prior == "prototype_K":
+                encoder.set_labels(lbl)
             z, _ = unpack_encoder_output(encoder(pts))
             loss = criterion(z, lbl)
             loss.backward()
@@ -391,6 +476,8 @@ def main():
     parser.add_argument("--seed",     type=int, default=42)
     parser.add_argument("--priors",   nargs="+", default=PRIOR_NAMES,
                         help="Subset of priors to run")
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--model_dim",  type=int, default=256)
     parser.add_argument("--out",      default="outputs/exp10_prior_selection.json")
     args = parser.parse_args()
 
@@ -420,13 +507,20 @@ def main():
             num_local        = 32,
             num_global       = 32,
             num_blocks       = 4,
-            model_dim        = 256,
-            features_out_dim = 256,
-            encoding_out_dim = 512,
+            model_dim        = args.model_dim,
+            features_out_dim = args.model_dim,
+            encoding_out_dim = args.model_dim * 2,
         ).to(DEVICE)
         encoder.name = prior
 
-        train_condition(encoder, args.dataset, args.epochs, args.seed)
+        if prior == "prototype_K":
+            train_ds = get_dataset(args.dataset, split="train", root=DATA_ROOT, num_points=N_POINTS)
+            print("  Building class prototypes...", flush=True)
+            prototypes = build_class_prototypes(encoder.feature_extractor, train_ds, DEVICE)
+            encoder.set_prototypes(prototypes)
+            print(f"  Prototypes built: {prototypes.shape}", flush=True)
+
+        train_condition(encoder, args.dataset, args.epochs, args.seed, batch_size=args.batch_size)
 
         db_enc, db_lbl = encode_dataset(encoder, test_ds)
 
@@ -438,9 +532,10 @@ def main():
                 R     = rotation_by_angle(theta, axis="y", device=DEVICE)
                 q_enc = encode_rotated(encoder, test_ds, R)
 
-            r1   = recall_at_k(q_enc, db_enc, db_lbl, db_lbl, k=1)
-            r5   = recall_at_k(q_enc, db_enc, db_lbl, db_lbl, k=5)
-            map5 = mean_ap_at_k(q_enc, db_enc, db_lbl, db_lbl, k=5)
+            sim  = q_enc @ db_enc.T
+            r1   = recall_at_k(sim, db_lbl, db_lbl, k=1)
+            r5   = recall_at_k(sim, db_lbl, db_lbl, k=5)
+            map5 = mean_ap_at_k(sim, db_lbl, db_lbl, k=5)
             angle_results.append({"angle": theta, "r1": r1, "r5": r5, "map5": map5})
             print(f"  θ={theta:5.1f}°  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}", flush=True)
 

@@ -723,13 +723,15 @@ def build_exp10(data):
         )
     priors = list(data.keys())
     prior_desc = {
-        "full_N":         "All 1024 points (baseline)",
-        "random_K":       "Random 256 points (lower bound)",
-        "fps_K":          "Farthest point sampling",
-        "eigenentropy_K": "Top-K by eigenentropy (geometric complexity)",
-        "surface_var_K":  "Top-K by surface variation",
-        "curvature_K":    "Top-K by anisotropy",
-        "salient_K":      "Top-K by enc-token attention (learned)",
+        "full_N":              "All 1024 points (baseline)",
+        "random_K":            "Random 256 points (lower bound)",
+        "fps_K":               "Farthest point sampling",
+        "eigenentropy_K":      "Top-K by eigenentropy (geometric complexity)",
+        "surface_var_K":       "Top-K by surface variation",
+        "curvature_K":         "Top-K by anisotropy",
+        "salient_K":           "Top-K by enc-token attention (learned)",
+        "aggregate_K":         "FPS centroids + ball-query max-pool (lossless compression)",
+        "knn_dist_entropy_K":  "Top-K by k-NN distance entropy (diverse neighborhoods)",
     }
     rows = []
     for p in priors:
@@ -1175,7 +1177,7 @@ EXP_OVERVIEW = [
     ("Exp 8",  "Part-Level Retrieval",           "Can RISA retrieve shapes by part similarity, not just global class?",
      "ShapeNet part retrieval (16 classes). Reports class mAP@5 and part mAP@5 for 6 methods including 3D-SIFT and RISA."),
     ("Exp 10", "Prior Point Selection Ablation", "Which geometric prior best selects K=256 informative points from N=1024?",
-     "7 priors on ModelNet40: full_N, random_K, fps_K, eigenentropy_K, surface_var_K, curvature_K, salient_K (learned)."),
+     "9 priors on ModelNet40: full_N, random_K, fps_K, eigenentropy_K, surface_var_K, curvature_K, salient_K, aggregate_K, knn_dist_entropy_K."),
 ]
 
 def build_overview():
