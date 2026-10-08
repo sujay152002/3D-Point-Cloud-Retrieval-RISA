@@ -176,8 +176,7 @@ def line_chart(series, width=680, height=240, title=""):
         parts.append(
             f'<g class="series-g" data-series="{label}" data-cid="{cid}">'
             f'<polyline points="{coords}" fill="none" stroke="{color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" '
-            f'class="chart-line" style="--dash-len:{dash_len:.1f};stroke-dasharray:{dash_len:.1f};stroke-dashoffset:{dash_len:.1f};'
-            f'animation:drawLine .9s cubic-bezier(.4,0,.2,1) {delay:.2f}s forwards"/>'
+            f'class="chart-line" style="--dash-len:{dash_len:.1f}"/>'
             + "".join(
                 f'<circle cx="{sx(x):.1f}" cy="{sy(y):.1f}" r="4.5" fill="{color}" stroke="#0d1117" stroke-width="2" class="chart-dot" '
                 f'data-label="{label} @ {int(x)}\u00b0: {y*100:.1f}%" '
@@ -872,7 +871,7 @@ header .badges{display:flex;gap:.5rem;justify-content:center;flex-wrap:wrap}
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .reveal{opacity:0;transform:translateY(28px);transition:opacity .55s cubic-bezier(.4,0,.2,1),transform .55s cubic-bezier(.4,0,.2,1)}
 .reveal.visible{opacity:1;transform:none}
-@keyframes drawLine{from{stroke-dashoffset:var(--dash-len)}to{stroke-dashoffset:0}}
+@keyframes drawLine{from{stroke-dasharray:var(--dash-len);stroke-dashoffset:var(--dash-len)}to{stroke-dasharray:var(--dash-len);stroke-dashoffset:0}}
 .panel-header{padding:2rem 2rem 1.5rem;border-bottom:1px solid #21262d;
   background:linear-gradient(180deg,#161b22 0%,#0d1117 100%)}
 .panel-header h2{font-size:1.35rem;color:#e6edf3;margin-bottom:.5rem;font-weight:700}
@@ -984,11 +983,11 @@ function showTab(id) {
   var panel = document.getElementById(id);
   panel.classList.add('active');
   panel.querySelectorAll('.chart-line').forEach(function(line) {
-    var dl = line.style.getPropertyValue('--dash-len') || line.getAttribute('stroke-dasharray') || '1000';
-    line.style.animation = 'none';
+    var dl = line.style.getPropertyValue('--dash-len') || '1000';
+    line.style.strokeDasharray = dl;
     line.style.strokeDashoffset = dl;
     line.getBoundingClientRect();
-    line.style.animation = '';
+    line.style.animation = 'drawLine .9s cubic-bezier(.4,0,.2,1) forwards';
   });
   _attachReveal(panel);
 }
@@ -1098,11 +1097,11 @@ document.addEventListener('DOMContentLoaded', function() {
   _attachReveal();
   // trigger line draw animation for whichever panel is active on load
   document.querySelectorAll('.tab-panel.active .chart-line').forEach(function(line) {
-    var dl = line.getAttribute('stroke-dasharray') || '1000';
-    line.style.animation = 'none';
+    var dl = line.style.getPropertyValue('--dash-len') || '1000';
+    line.style.strokeDasharray = dl;
     line.style.strokeDashoffset = dl;
     line.getBoundingClientRect();
-    line.style.animation = '';
+    line.style.animation = 'drawLine .9s cubic-bezier(.4,0,.2,1) forwards';
   });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeZoom(); });
   document.getElementById('zoom-overlay').addEventListener('click', function(e){
