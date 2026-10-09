@@ -489,6 +489,8 @@ def main():
     kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
     test_ds = get_dataset(args.dataset, split="test", root=DATA_ROOT,
                           num_points=N_POINTS, **kwargs)
+    val_ds  = get_dataset(args.dataset, split="val",  root=DATA_ROOT,
+                          num_points=N_POINTS, **kwargs)
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     results = {}
@@ -526,27 +528,34 @@ def main():
 
         ckpt_dir = ROOT / "outputs" / "checkpoints"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
-        ckpt_path = ckpt_dir / f"exp10_{prior}.pt"
+        ckpt_path    = ckpt_dir / f"exp10_{prior}.pt"
         ckpt_path_ts = ckpt_dir / f"exp10_{prior}_{ts}.pt"
-        torch.save(encoder.state_dict(), ckpt_path)
-        torch.save(encoder.state_dict(), ckpt_path_ts)
-        print(f"  Checkpoint saved → {ckpt_path}")
-        print(f"  Checkpoint saved → {ckpt_path_ts}")
+        if ckpt_path.exists():
+            print(f"  Loading checkpoint {ckpt_path} — skipping training", flush=True)
+            encoder.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
+            encoder.eval()
+        else:
+            train_condition(encoder, args.dataset, args.epochs, args.seed, batch_size=args.batch_size)
+            torch.save(encoder.state_dict(), ckpt_path)
+            torch.save(encoder.state_dict(), ckpt_path_ts)
+            print(f"  Checkpoint saved → {ckpt_path}")
 
         db_enc, db_lbl = encode_dataset(encoder, test_ds)
+        q_enc0, q_lbl  = encode_dataset(encoder, val_ds)
+        db_enc_n = F.normalize(db_enc, dim=-1)
 
         angle_results = []
         for theta in ANGLES:
             if theta == 0:
-                q_enc = db_enc
+                q_enc = q_enc0
             else:
                 R     = rotation_by_angle(theta, axis="y", device=DEVICE)
-                q_enc = encode_rotated(encoder, test_ds, R)
+                q_enc = encode_rotated(encoder, val_ds, R)
 
-            sim  = q_enc @ db_enc.T
-            r1   = recall_at_k(sim, db_lbl, db_lbl, k=1)
-            r5   = recall_at_k(sim, db_lbl, db_lbl, k=5)
-            map5 = mean_ap_at_k(sim, db_lbl, db_lbl, k=5)
+            sim  = F.normalize(q_enc, dim=-1) @ db_enc_n.T
+            r1   = recall_at_k(sim, q_lbl, db_lbl, k=1)
+            r5   = recall_at_k(sim, q_lbl, db_lbl, k=5)
+            map5 = mean_ap_at_k(sim, q_lbl, db_lbl, k=5)
             angle_results.append({"angle": theta, "r1": r1, "r5": r5, "map5": map5})
             print(f"  θ={theta:5.1f}°  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}", flush=True)
 
