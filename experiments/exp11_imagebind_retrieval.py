@@ -240,8 +240,10 @@ def encode_with_proj(encoder: nn.Module, proj: nn.Module,
     for batch in loader:
         pts = batch[0].to(DEVICE)
         lbl = batch[1]
-        z, _ = unpack_encoder_output(encoder(pts))   # [B, risa_dim]
-        z    = proj(z)                                # [B, IB_DIM]
+        if pts.shape[1] != 3:
+            pts = pts.permute(0, 2, 1)
+        z, _ = unpack_encoder_output(encoder(pts))
+        z    = proj(z)
         all_z.append(z.cpu())
         all_labels.append(lbl)
 
@@ -284,15 +286,11 @@ def encode_text_queries(queries: list) -> torch.Tensor:
 
 # ── Retrieval evaluation ──────────────────────────────────────────────────────
 
-def retrieval_metrics(q_embs: torch.Tensor, db_embs: torch.Tensor,
+def retrieval_metrics(sim: torch.Tensor,
+                      q_embs: torch.Tensor, db_embs: torch.Tensor,
                       q_labels: torch.Tensor, db_labels: torch.Tensor,
                       ks=(1, 5)) -> dict:
-    """Compute R@k and mAP@5 for query embeddings against a database."""
-    sim    = q_embs @ db_embs.T                      # [Q, DB]
-    # exclude self-matches when query == database
-    if q_embs.shape[0] == db_embs.shape[0]:
-        sim.fill_diagonal_(-1e4)
-
+    """Compute R@k and mAP@5 given a precomputed sim matrix [Q, DB]."""
     results = {}
     for k in ks:
         results[f"R@{k}"] = recall_at_k(sim, q_labels, db_labels, k)
@@ -301,6 +299,15 @@ def retrieval_metrics(q_embs: torch.Tensor, db_embs: torch.Tensor,
 
 
 # ── Training ──────────────────────────────────────────────────────────────────
+
+class _IndexedDataset(torch.utils.data.Dataset):
+    """Wraps a dataset to also return the sample index."""
+    def __init__(self, ds): self.ds = ds
+    def __len__(self): return len(self.ds)
+    def __getitem__(self, i):
+        item = self.ds[i]
+        return (*item, i) if isinstance(item, tuple) else (item, i)
+
 
 def train_projection(
     encoder:    nn.Module,
@@ -314,48 +321,39 @@ def train_projection(
 ) -> list:
     """Train only the projection MLP using cached ImageBind embeddings as targets."""
 
-    ib_embs   = F.normalize(ib_cache["embeddings"].to(DEVICE), dim=-1)  # [N, IB_DIM]
-    ib_labels = ib_cache["labels"]
+    ib_embs = F.normalize(ib_cache["embeddings"].to(DEVICE), dim=-1)  # [N, IB_DIM]
 
+    # Use indexed dataset so we can look up the correct IB embedding per sample
     loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True,
+        _IndexedDataset(dataset), batch_size=batch_size, shuffle=True,
         drop_last=True, num_workers=2, pin_memory=True,
     )
 
-    # Only projection + temperature are trained; encoder is frozen
     opt = optim.AdamW(
         list(proj.parameters()) + list(criterion.parameters()),
         lr=lr, weight_decay=1e-4,
     )
     scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-6)
 
-    # Build index mapping from dataset position to ib_cache row
-    # (assumes dataset order matches cache order)
     history = []
     encoder.eval()
 
     for epoch in range(epochs):
         proj.train(); criterion.train()
-        total_loss = 0.0
-        n_batches  = 0
+        total_loss, n_batches = 0.0, 0
 
-        for batch_idx, batch in enumerate(loader):
+        for batch in loader:
             pts = batch[0].to(DEVICE)
-            # Recover the dataset indices for this batch to look up ib_embs
-            # DataLoader with shuffle=True doesn't expose indices directly,
-            # so we use a custom sampler approach: store indices in dataset
-            # For now: use the batch position * batch_size as approximate index
-            # (works because drop_last=True keeps batches full and ordered within epoch)
-            start = batch_idx * batch_size
-            idx   = torch.arange(start, start + pts.size(0))
-            idx   = idx.clamp(max=ib_embs.size(0) - 1)
+            idx = batch[-1]                              # dataset indices [B]
+            if pts.shape[1] != 3:
+                pts = pts.permute(0, 2, 1)
 
-            z_ib = ib_embs[idx]                          # [B, IB_DIM]
+            z_ib = ib_embs[idx]                          # [B, IB_DIM] — correct lookup
 
             with torch.no_grad():
-                z_risa, _ = unpack_encoder_output(encoder(pts))  # [B, risa_dim]
+                z_risa, _ = unpack_encoder_output(encoder(pts))
 
-            z_proj = proj(z_risa)                        # [B, IB_DIM]
+            z_proj = proj(z_risa)
             loss   = criterion(z_proj, z_ib)
 
             opt.zero_grad()
@@ -481,13 +479,19 @@ def main():
 
     # ── Shape-to-shape retrieval under rotation ───────────────────────────────
     print("\n  Evaluating shape-to-shape retrieval under rotation...")
-    test_labels = test_cache["labels"]
+    val_ds      = get_dataset(args.dataset, split="val", root=DATA_ROOT, num_points=N_POINTS)
+    z_db, db_labels_s2s = encode_with_proj(encoder, proj, test_ds)   # gallery = test
+    z_q0, q_labels_s2s  = encode_with_proj(encoder, proj, val_ds)    # queries = val
+    db_n = F.normalize(z_db, dim=-1)
     rotation_results = []
 
     for angle in ANGLES:
-        z_rotated = encode_rotated_with_proj(encoder, proj, test_ds, angle)
-        z_db, _   = encode_with_proj(encoder, proj, test_ds)
-        metrics   = retrieval_metrics(z_rotated, z_db, test_labels, test_labels)
+        if angle == 0:
+            z_q = z_q0
+        else:
+            z_q = encode_rotated_with_proj(encoder, proj, val_ds, angle)
+        sim     = F.normalize(z_q, dim=-1) @ db_n.T
+        metrics = retrieval_metrics(sim, z_q, db_n, q_labels_s2s, db_labels_s2s)
         metrics["angle"] = angle
         rotation_results.append(metrics)
         print(f"    θ={angle:5.1f}°  R@1={metrics['R@1']:.3f}  "
@@ -513,9 +517,14 @@ def main():
 
     # ── IB image-to-shape retrieval ───────────────────────────────────────────
     print("\n  Evaluating ImageBind image-to-shape retrieval...")
-    z_ib_test = F.normalize(test_cache["embeddings"].to(DEVICE), dim=-1).cpu()
-    ib_sim    = z_ib_test @ z_db.T                           # [N_test, DB]
-    ib_metrics = retrieval_metrics(z_ib_test, z_db, test_labels, test_labels)
+    val_cache  = build_imagebind_cache(
+        val_ds, cache_dir / f"{args.dataset}_val_ib.pt", n_views=args.n_views,
+    )
+    z_ib_q   = F.normalize(val_cache["embeddings"], dim=-1)   # queries = val IB embs
+    ib_q_lbl = val_cache["labels"]
+    z_db_n   = F.normalize(z_db, dim=-1)
+    ib_sim   = z_ib_q @ z_db_n.T                              # [N_val, N_test]
+    ib_metrics = retrieval_metrics(ib_sim, z_ib_q, z_db_n, ib_q_lbl, db_labels)
     print(f"    image→shape  R@1={ib_metrics['R@1']:.3f}  "
           f"R@5={ib_metrics['R@5']:.3f}  mAP@5={ib_metrics['mAP@5']:.3f}")
 
