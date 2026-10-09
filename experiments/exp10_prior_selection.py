@@ -524,8 +524,6 @@ def main():
             encoder.set_prototypes(prototypes)
             print(f"  Prototypes built: {prototypes.shape}", flush=True)
 
-        train_condition(encoder, args.dataset, args.epochs, args.seed, batch_size=args.batch_size)
-
         ckpt_dir = ROOT / "outputs" / "checkpoints"
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         ckpt_path    = ckpt_dir / f"exp10_{prior}.pt"
