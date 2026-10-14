@@ -28,10 +28,11 @@ Usage:
 
 import argparse
 import json
+import random
 import sys, io
-if hasattr(sys.stdout, 'fileno'):
+if hasattr(sys.stdout, 'reconfigure'):
     try:
-        sys.stdout = io.TextIOWrapper(open(sys.stdout.fileno(), "wb", 0), write_through=True)
+        sys.stdout.reconfigure(line_buffering=True)
     except Exception:
         pass
 from pathlib import Path
@@ -84,6 +85,15 @@ DATA_ROOT = str(ROOT / "data")
 N_POINTS  = 1024
 ANGLES    = [0, 15, 30, 45, 60, 90, 120, 150, 180]
 
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 PRIOR_NAMES = [
     "full_N",
     "random_K",
@@ -94,6 +104,7 @@ PRIOR_NAMES = [
     "salient_K",
     "aggregate_K",
     "knn_dist_entropy_K",
+    "gumbel_K",
 ]
 
 
@@ -222,6 +233,55 @@ def aggregate_fps_ballquery(features, xyz, K):
     return agg.permute(0, 2, 1), centroid_idx                  # [B, 64, K], [B, K]
 
 
+class GumbelPointSelector(nn.Module):
+    """Differentiable top-K point selection via Gumbel-softmax with straight-through.
+
+    Implements the straight-through Gumbel-softmax estimator (Jang et al., ICLR 2017)
+    extended to top-K selection:
+      y_soft = softmax((logits + gumbel_noise) / tau)   <- differentiable
+      y_hard = one_hot(argmax(y_soft))                  <- hard, non-differentiable
+      output = (y_hard - y_soft).detach() + y_soft      <- hard forward, soft backward
+
+    This gives hard top-K indices in the forward pass while routing gradients
+    back to the scorer through y_soft. As tau -> 0, y_soft -> y_hard.
+    """
+    def __init__(self, feat_dim: int = 64, hidden: int = 64, tau: float = 1.0):
+        super().__init__()
+        self.tau = tau
+        self.scorer = nn.Sequential(
+            nn.Linear(feat_dim, hidden),
+            nn.GELU(),
+            nn.Linear(hidden, 1),
+        )
+
+    def set_tau(self, tau: float):
+        self.tau = max(tau, 0.01)
+
+    def forward(self, features: torch.Tensor, K: int) -> tuple:
+        """features: [B, feat_dim, N]
+        Returns:
+          hard_idx  [B, K]   -- top-K indices for gathering point features
+          y_st      [B, N]   -- straight-through weights for grad flow (training only)
+        """
+        B, D, N = features.shape
+        f = features.permute(0, 2, 1).reshape(B * N, D)
+        logits = self.scorer(f).reshape(B, N)              # [B, N]
+
+        if self.training:
+            # Gumbel-softmax: sample ~ Gumbel(0,1) and apply softmax
+            gumbel = -torch.empty_like(logits).exponential_().log()
+            y_soft = F.softmax((logits + gumbel) / self.tau, dim=-1)  # [B, N]
+
+            # hard top-K indices
+            hard_idx = y_soft.topk(K, dim=-1).indices                 # [B, K]
+            # straight-through: return y_soft as the differentiable weight
+            # the caller uses hard_idx for the forward gather and y_soft for grad routing
+            return hard_idx, y_soft
+        else:
+            hard_idx = logits.topk(K, dim=-1).indices                 # [B, K]
+            return hard_idx, None
+
+
 def select_salient(features, indices, pos_enc, feature_embed, block, enc_token, K):
     """Top-K by enc_token cross-attention weights from block 0.
     Runs feature_embed + one attention block under no_grad.
@@ -310,6 +370,11 @@ class RISAWithPrior(nn.Module):
         self.encoding_token = nn.Parameter(torch.empty(1, model_dim, 1))
         nn.init.xavier_uniform_(self.encoding_token)
 
+        if prior == "gumbel_K":
+            self.gumbel_selector = GumbelPointSelector(feat_dim=feat_dim, hidden=64, tau=1.0)
+        else:
+            self.gumbel_selector = None
+
         self.features_post = nn.Sequential(
             nn.Conv1d(model_dim, features_out_dim, 1),
             nn.BatchNorm1d(features_out_dim),
@@ -358,7 +423,33 @@ class RISAWithPrior(nn.Module):
         features, indices, pos_enc = self.feature_extractor(x)
         evals = features[:, 1:4, :].permute(0, 2, 1)  # [B, N, 3]
 
-        if self.prior == "aggregate_K":
+        if self.prior == "gumbel_K":
+            K = min(self.K, N)
+            hard_idx, y_st = self.gumbel_selector(features, K)  # [B,K], [B,N] or None
+            b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
+            if y_st is not None:
+                # Correct straight-through for top-K:
+                # Forward : hard gather (features unchanged)
+                # Backward: grad flows through y_soft via a zero-valued term
+                #   d/d_logits = d/d_y_soft * (dy_soft/d_logits)
+                # The term (y_soft_at_selected.sum() - y_soft_at_selected.sum().detach())
+                # is zero in forward but has real gradient in backward.
+                b_idx2     = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
+                features_K = features.permute(0,2,1)[b_idx2, hard_idx].permute(0,2,1)  # [B,64,K]
+                # straight-through: (y_sel - y_sel.detach()) is zero in forward
+                # but its gradient wrt scorer logits is non-zero -> scorer gets trained
+                y_sel      = y_st[b_idx2, hard_idx]                 # [B, K]
+                features_K = features_K + (y_sel - y_sel.detach()).unsqueeze(1).expand_as(features_K)
+            else:
+                features_K = features.permute(0,2,1)[b_idx, hard_idx].permute(0,2,1)
+            pos_enc_mean = pos_enc.mean(dim=2)
+            pos_enc_K    = pos_enc_mean[b_idx, hard_idx]
+            pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1)
+            indices_K    = torch.arange(K, device=x.device).unsqueeze(0).unsqueeze(0).expand(B, K, -1)
+            features_in  = features_K
+            attn_indices = indices_K
+            attn_pos_enc = pos_enc_K
+        elif self.prior == "aggregate_K":
             K = min(self.K, N)
             with torch.no_grad():
                 agg_features, centroid_idx = aggregate_fps_ballquery(features, x, K)  # [B, 64, K], [B, K]
@@ -416,10 +507,21 @@ class RISAWithPrior(nn.Module):
 
 # ── Training ──────────────────────────────────────────────────────────────────
 
+def _worker_init_fn(worker_id):
+    worker_seed = torch.initial_seed() % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+
+
 def train_condition(encoder, dataset_name, epochs, seed, batch_size=4):
-    torch.manual_seed(seed)
+    set_seed(seed)
     ds = get_dataset(dataset_name, split="train", root=DATA_ROOT, num_points=N_POINTS)
-    loader = torch.utils.data.DataLoader(ds, batch_size=batch_size, shuffle=True, drop_last=True)
+    g = torch.Generator()
+    g.manual_seed(seed)
+    loader = torch.utils.data.DataLoader(
+        ds, batch_size=batch_size, shuffle=True, drop_last=True,
+        worker_init_fn=_worker_init_fn, generator=g,
+    )
 
     with torch.no_grad():
         dummy = torch.randn(2, 3, 64, device=DEVICE)
@@ -439,8 +541,12 @@ def train_condition(encoder, dataset_name, epochs, seed, batch_size=4):
         Q[:, :, 0:1] *= torch.linalg.det(Q).sign().view(B, 1, 1)
         return Q
 
+    use_gumbel = encoder.prior == "gumbel_K"
     encoder.train()
     for ep in range(epochs):
+        if use_gumbel:
+            tau = max(1.0 * (0.1 ** (ep / max(epochs - 1, 1))), 0.1)
+            encoder.gumbel_selector.set_tau(tau)
         ep_loss, n = 0.0, 0
         for batch in loader:
             pts = batch[0] if isinstance(batch, (tuple, list)) else batch
@@ -460,7 +566,8 @@ def train_condition(encoder, dataset_name, epochs, seed, batch_size=4):
             opt.step()
             ep_loss += loss.item(); n += 1
         scheduler.step()
-        print(f"    epoch {ep+1}/{epochs}  loss={ep_loss/max(n,1):.4f}  lr={scheduler.get_last_lr()[0]:.2e}", flush=True)
+        tau_str = f"  tau={encoder.gumbel_selector.tau:.3f}" if use_gumbel else ""
+        print(f"    epoch {ep+1}/{epochs}  loss={ep_loss/max(n,1):.4f}  lr={scheduler.get_last_lr()[0]:.2e}{tau_str}", flush=True)
 
     encoder.eval()
     del criterion, opt, scheduler, loader, ds
@@ -483,8 +590,8 @@ def main():
     parser.add_argument("--out",      default="outputs/exp10_prior_selection.json")
     args = parser.parse_args()
 
-    torch.manual_seed(args.seed)
-    print(f"Device: {DEVICE}  K={args.K}  epochs={args.epochs}")
+    set_seed(args.seed)
+    print(f"Device: {DEVICE}  K={args.K}  epochs={args.epochs}  seed={args.seed}")
 
     kwargs  = {"variant": "OBJ_ONLY"} if args.dataset == "scanobjectnn" else {}
     test_ds = get_dataset(args.dataset, split="test", root=DATA_ROOT,
@@ -528,15 +635,10 @@ def main():
         ckpt_dir.mkdir(parents=True, exist_ok=True)
         ckpt_path    = ckpt_dir / f"exp10_{prior}.pt"
         ckpt_path_ts = ckpt_dir / f"exp10_{prior}_{ts}.pt"
-        if ckpt_path.exists():
-            print(f"  Loading checkpoint {ckpt_path} — skipping training", flush=True)
-            encoder.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
-            encoder.eval()
-        else:
-            train_condition(encoder, args.dataset, args.epochs, args.seed, batch_size=args.batch_size)
-            torch.save(encoder.state_dict(), ckpt_path)
-            torch.save(encoder.state_dict(), ckpt_path_ts)
-            print(f"  Checkpoint saved → {ckpt_path}")
+        train_condition(encoder, args.dataset, args.epochs, args.seed, batch_size=args.batch_size)
+        torch.save(encoder.state_dict(), ckpt_path)
+        torch.save(encoder.state_dict(), ckpt_path_ts)
+        print(f"  Checkpoint saved → {ckpt_path}")
 
         db_enc, db_lbl = encode_dataset(encoder, test_ds)
         q_enc0, q_lbl  = encode_dataset(encoder, val_ds)

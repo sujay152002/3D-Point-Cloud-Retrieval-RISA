@@ -42,18 +42,18 @@ Usage:
 
 import argparse
 import json
+import random
 import sys
 import io
-if hasattr(sys.stdout, 'fileno'):
-    try:
-        fd = sys.stdout.fileno()
-        if fd >= 0:
-            sys.stdout = io.TextIOWrapper(open(fd, "wb", 0), write_through=True)
-    except Exception:
-        pass
+import os
 
 from pathlib import Path
 from datetime import datetime
+
+# Ensure stdout is line-buffered and writable when redirected to a file
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+os.environ.setdefault("PYTHONUNBUFFERED", "1")
 
 import numpy as np
 import torch
@@ -67,7 +67,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.datasets import get_dataset
 from core.trainer import unpack_encoder_output
-from experiments.exp10_prior_selection import RISAWithPrior, PRIOR_NAMES, train_condition
+from experiments.exp10_prior_selection import RISAWithPrior, PRIOR_NAMES, train_condition, set_seed
 from experiments.exp1_retrieval_eval import recall_at_k, mean_ap_at_k
 
 DEVICE    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -156,12 +156,19 @@ def build_imagebind_cache(dataset, cache_path: Path, n_views: int = 4, batch_siz
 
         images = render_point_cloud(xyz, n_views=n_views)
 
-        # ImageBind expects a list of PIL images wrapped in its data format
-        inputs = {
-            ModalityType.VISION: ib_data.load_and_transform_vision_data(images, DEVICE)
-        }
-        with torch.no_grad():
-            embs = ib_model(inputs)[ModalityType.VISION]  # [n_views, IB_DIM]
+        # ImageBind expects file paths, not PIL images — save to temp files
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_paths = []
+            for vi, img in enumerate(images):
+                p = os.path.join(tmp_dir, f"view_{vi}.png")
+                img.save(p)
+                tmp_paths.append(p)
+            inputs = {
+                ModalityType.VISION: ib_data.load_and_transform_vision_data(tmp_paths, DEVICE)
+            }
+            with torch.no_grad():
+                embs = ib_model(inputs)[ModalityType.VISION]  # [n_views, IB_DIM]
         z = embs.mean(dim=0)  # [IB_DIM] — average over views
 
         all_embeddings.append(z.cpu())
@@ -300,6 +307,12 @@ def retrieval_metrics(sim: torch.Tensor,
 
 # ── Training ──────────────────────────────────────────────────────────────────
 
+def _worker_init_fn(worker_id):
+    worker_seed = torch.initial_seed() % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
+
+
 class _IndexedDataset(torch.utils.data.Dataset):
     """Wraps a dataset to also return the sample index."""
     def __init__(self, ds): self.ds = ds
@@ -310,36 +323,52 @@ class _IndexedDataset(torch.utils.data.Dataset):
 
 
 def train_projection(
-    encoder:    nn.Module,
-    proj:       nn.Module,
-    criterion:  nn.Module,
-    ib_cache:   dict,
+    encoder:     nn.Module,
+    proj:        nn.Module,
+    criterion:   nn.Module,
+    ib_cache:    dict,
     dataset,
-    epochs:     int,
-    batch_size: int,
-    lr:         float,
+    epochs:      int,
+    batch_size:  int,
+    lr:          float,
+    text_embs:   torch.Tensor = None,   # [C, IB_DIM] — one per class, L2-normalised
+    text_lambda: float = 0.5,
 ) -> list:
-    """Train only the projection MLP using cached ImageBind embeddings as targets."""
+    """Train projection MLP with dual InfoNCE: image targets + text targets.
 
-    ib_embs = F.normalize(ib_cache["embeddings"].to(DEVICE), dim=-1)  # [N, IB_DIM]
+    image loss : InfoNCE(z_proj, z_ib_image)          — aligns to vision subspace
+    text loss  : InfoNCE(z_proj, z_text[label])       — aligns to text subspace
+    total loss : image_loss + text_lambda * text_loss
 
-    # Use indexed dataset so we can look up the correct IB embedding per sample
+    text_embs [C, IB_DIM]: precomputed ImageBind text embeddings, one per class.
+    Per batch, the text target for each sample is text_embs[label].
+    """
+    ib_embs  = F.normalize(ib_cache["embeddings"].to(DEVICE), dim=-1)   # [N, IB_DIM]
+    ib_labels = ib_cache["labels"].to(DEVICE)                            # [N]
+    if text_embs is not None:
+        text_embs = text_embs.to(DEVICE)                                 # [C, IB_DIM]
+
     loader = DataLoader(
         _IndexedDataset(dataset), batch_size=batch_size, shuffle=True,
         drop_last=True, num_workers=2, pin_memory=True,
+        worker_init_fn=_worker_init_fn,
     )
 
     opt = optim.AdamW(
-        list(proj.parameters()) + list(criterion.parameters()),
+        list(proj.parameters()) + list(criterion.parameters()) +
+        [p for p in encoder.parameters() if p.requires_grad],
         lr=lr, weight_decay=1e-4,
     )
     scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs, eta_min=1e-6)
 
     history = []
     encoder.eval()
+    use_gumbel = (hasattr(encoder, 'gumbel_selector') and encoder.gumbel_selector is not None)
 
     for epoch in range(epochs):
         proj.train(); criterion.train()
+        if use_gumbel:
+            encoder.gumbel_selector.train()
         total_loss, n_batches = 0.0, 0
 
         for batch in loader:
@@ -348,13 +377,18 @@ def train_projection(
             if pts.shape[1] != 3:
                 pts = pts.permute(0, 2, 1)
 
-            z_ib = ib_embs[idx]                          # [B, IB_DIM] — correct lookup
+            z_ib  = ib_embs[idx]                         # [B, IB_DIM]
 
             with torch.no_grad():
                 z_risa, _ = unpack_encoder_output(encoder(pts))
 
             z_proj = proj(z_risa)
             loss   = criterion(z_proj, z_ib)
+
+            if text_embs is not None:
+                lbl        = ib_labels[idx]              # [B] — class indices
+                z_text_tgt = text_embs[lbl]              # [B, IB_DIM]
+                loss = loss + text_lambda * criterion(z_proj, z_text_tgt)
 
             opt.zero_grad()
             loss.backward()
@@ -365,6 +399,9 @@ def train_projection(
             n_batches  += 1
 
         scheduler.step()
+        if use_gumbel:
+            tau = max(1.0 * (0.1 ** (epoch / max(epochs - 1, 1))), 0.1)
+            encoder.gumbel_selector.set_tau(tau)
         avg_loss = total_loss / max(n_batches, 1)
         history.append(avg_loss)
         print(f"  epoch {epoch+1:3d}/{epochs}  loss={avg_loss:.4f}  "
@@ -391,12 +428,16 @@ def main():
                         help="Encoder training epochs if no --risa_ckpt is provided.")
     parser.add_argument("--risa_batch_size", type=int, default=8,
                         help="Batch size for encoder training.")
+    parser.add_argument("--proj_ckpt",    type=str,   default=None,
+                        help="Path to a saved proj_best.pt. If set, skips projection training.")
+    parser.add_argument("--text_lambda",  type=float, default=0.5,
+                        help="Weight for text InfoNCE loss during projection training.")
     parser.add_argument("--dataset",    default="shapenet")
     parser.add_argument("--seed",       type=int,   default=42)
     args = parser.parse_args()
 
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
+    set_seed(args.seed)
+    print(f"  seed={args.seed}")
 
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir  = ROOT / "outputs" / f"exp11_{args.prior}_{ts}"
@@ -440,6 +481,10 @@ def main():
 
     for p in encoder.parameters():
         p.requires_grad = False
+    # unfreeze gumbel selector so it trains jointly with the projection MLP
+    if args.prior == "gumbel_K" and encoder.gumbel_selector is not None:
+        for p in encoder.gumbel_selector.parameters():
+            p.requires_grad = True
     encoder.eval()
 
     # ── Projection MLP (trained) ──────────────────────────────────────────────
@@ -463,19 +508,43 @@ def main():
         n_views=args.n_views,
     )
 
-    # ── Train projection ──────────────────────────────────────────────────────
-    print("\n  Training projection MLP...")
-    history = train_projection(
-        encoder    = encoder,
-        proj       = proj,
-        criterion  = criterion,
-        ib_cache   = train_cache,
-        dataset    = train_ds,
-        epochs     = args.epochs,
-        batch_size = args.batch_size,
-        lr         = args.lr,
-    )
-    torch.save(proj.state_dict(), out_dir / "proj_best.pt")
+    # ── Train projection (or load from checkpoint) ────────────────────────────
+    proj_ckpt_path = Path(args.proj_ckpt) if args.proj_ckpt else None
+    auto_proj_ckpt = ckpt_dir / f"exp11_{args.prior}_proj.pt"
+
+    if proj_ckpt_path and proj_ckpt_path.exists():
+        proj.load_state_dict(torch.load(proj_ckpt_path, map_location=DEVICE, weights_only=True))
+        print(f"  Loaded projection checkpoint: {proj_ckpt_path}")
+        history = []
+    elif auto_proj_ckpt.exists():
+        proj.load_state_dict(torch.load(auto_proj_ckpt, map_location=DEVICE, weights_only=True))
+        print(f"  Loaded cached projection checkpoint: {auto_proj_ckpt}")
+        history = []
+    else:
+        # Precompute text embeddings for all training categories (cheap, done once)
+        print("  Precomputing text embeddings for training categories...")
+        base_train_ds  = getattr(train_ds, "dataset", train_ds)
+        train_cats     = getattr(base_train_ds, "categories", {})
+        train_queries  = [f"a 3D model of a {train_cats[i]}" for i in sorted(train_cats.keys())]
+        text_embs      = encode_text_queries(train_queries).to(DEVICE)   # [C, IB_DIM]
+        print(f"  Text embeddings: {text_embs.shape} for {len(train_queries)} categories")
+
+        print("\n  Training projection MLP (image + text InfoNCE)...")
+        history = train_projection(
+            encoder      = encoder,
+            proj         = proj,
+            criterion    = criterion,
+            ib_cache     = train_cache,
+            dataset      = train_ds,
+            epochs       = args.epochs,
+            batch_size   = args.batch_size,
+            lr           = args.lr,
+            text_embs    = text_embs,
+            text_lambda  = args.text_lambda,
+        )
+        torch.save(proj.state_dict(), out_dir / "proj_best.pt")
+        torch.save(proj.state_dict(), auto_proj_ckpt)
+        print(f"  Projection checkpoint saved → {auto_proj_ckpt}")
 
     # ── Shape-to-shape retrieval under rotation ───────────────────────────────
     print("\n  Evaluating shape-to-shape retrieval under rotation...")
@@ -504,7 +573,7 @@ def main():
     # Use category names as text queries — one query per class
     base_ds    = getattr(test_ds, "dataset", test_ds)
     categories = getattr(base_ds, "categories", {})
-    text_queries = [categories[i] for i in sorted(categories.keys())]
+    text_queries = [f"a 3D model of a {categories[i]}" for i in sorted(categories.keys())]
     query_labels = torch.tensor(sorted(categories.keys()))
 
     z_text   = encode_text_queries(text_queries)             # [C, IB_DIM]
