@@ -236,50 +236,115 @@ def aggregate_fps_ballquery(features, xyz, K):
 class GumbelPointSelector(nn.Module):
     """Differentiable top-K point selection via Gumbel-softmax with straight-through.
 
-    Implements the straight-through Gumbel-softmax estimator (Jang et al., ICLR 2017)
-    extended to top-K selection:
-      y_soft = softmax((logits + gumbel_noise) / tau)   <- differentiable
-      y_hard = one_hot(argmax(y_soft))                  <- hard, non-differentiable
-      output = (y_hard - y_soft).detach() + y_soft      <- hard forward, soft backward
+    Three fixes over the naive implementation:
 
-    This gives hard top-K indices in the forward pass while routing gradients
-    back to the scorer through y_soft. As tau -> 0, y_soft -> y_hard.
+    Fix 1 — Scorer runs on feature_embed outputs (model_dim=256) not raw 64-dim
+             features, giving it richer representations to score from.
+
+    Fix 2 — Full soft weighted residual instead of selected-only straight-through:
+             features_out = hard_gather + (y_soft @ features_T).unsqueeze(1) * 0
+             The soft weighted sum is zero-weighted in the forward pass but
+             routes gradients through ALL N positions, not just the K selected.
+
+    Fix 3 — Scorer is pretrained to mimic eigenentropy scores before end-to-end
+             training, giving it a meaningful initialization (see pretrain_gumbel_scorer).
     """
-    def __init__(self, feat_dim: int = 64, hidden: int = 64, tau: float = 1.0):
+    def __init__(self, feat_dim: int = 256, hidden: int = 128, tau: float = 1.0):
         super().__init__()
         self.tau = tau
         self.scorer = nn.Sequential(
             nn.Linear(feat_dim, hidden),
             nn.GELU(),
-            nn.Linear(hidden, 1),
+            nn.Linear(hidden, hidden // 2),
+            nn.GELU(),
+            nn.Linear(hidden // 2, 1),
         )
 
     def set_tau(self, tau: float):
         self.tau = max(tau, 0.01)
 
     def forward(self, features: torch.Tensor, K: int) -> tuple:
-        """features: [B, feat_dim, N]
+        """features: [B, feat_dim, N] — expects feature_embed outputs (256-dim)
         Returns:
-          hard_idx  [B, K]   -- top-K indices for gathering point features
-          y_st      [B, N]   -- straight-through weights for grad flow (training only)
+          hard_idx  [B, K]   -- top-K indices for hard gather
+          y_soft    [B, N]   -- soft weights for full gradient routing (training only)
         """
         B, D, N = features.shape
         f = features.permute(0, 2, 1).reshape(B * N, D)
-        logits = self.scorer(f).reshape(B, N)              # [B, N]
+        logits = self.scorer(f).reshape(B, N)                         # [B, N]
 
         if self.training:
-            # Gumbel-softmax: sample ~ Gumbel(0,1) and apply softmax
             gumbel = -torch.empty_like(logits).exponential_().log()
             y_soft = F.softmax((logits + gumbel) / self.tau, dim=-1)  # [B, N]
-
-            # hard top-K indices
             hard_idx = y_soft.topk(K, dim=-1).indices                 # [B, K]
-            # straight-through: return y_soft as the differentiable weight
-            # the caller uses hard_idx for the forward gather and y_soft for grad routing
             return hard_idx, y_soft
         else:
-            hard_idx = logits.topk(K, dim=-1).indices                 # [B, K]
+            hard_idx = logits.topk(K, dim=-1).indices
             return hard_idx, None
+
+
+def pretrain_gumbel_scorer(encoder: nn.Module, dataset_name: str, seed: int,
+                           epochs: int = 10, batch_size: int = 8):
+    """Pretrain GumbelPointSelector to predict eigenentropy scores.
+
+    Eigenentropy = -sum(p_i * log(p_i)) where p_i = e_i / sum(e_i).
+    This gives the scorer a meaningful initialization before end-to-end training,
+    so it starts by selecting geometrically complex points rather than random ones.
+
+    Runs under no_grad for the feature extractor — only scorer params are updated.
+    """
+    set_seed(seed)
+    ds     = get_dataset(dataset_name, split="train", root=DATA_ROOT, num_points=N_POINTS)
+    g      = torch.Generator(); g.manual_seed(seed)
+    loader = torch.utils.data.DataLoader(
+        ds, batch_size=batch_size, shuffle=True, drop_last=True,
+        worker_init_fn=_worker_init_fn, generator=g,
+    )
+
+    opt = optim.Adam(encoder.gumbel_selector.scorer.parameters(), lr=1e-3)
+
+    encoder.eval()  # freeze BN etc.
+    encoder.gumbel_selector.scorer.train()
+
+    print("  Pretraining Gumbel scorer on eigenentropy targets...")
+    for ep in range(epochs):
+        total, n = 0.0, 0
+        for batch in loader:
+            pts = batch[0].float().to(DEVICE)
+            if pts.shape[1] != 3:
+                pts = pts.permute(0, 2, 1)
+
+            with torch.no_grad():
+                features, _, _ = encoder.feature_extractor(pts)      # [B, 64, N]
+                evals = features[:, 1:4, :].permute(0, 2, 1)         # [B, N, 3]
+                # eigenentropy target
+                e   = evals.clamp(min=1e-8)
+                p   = e / e.sum(dim=-1, keepdim=True)
+                tgt = -(p * p.log()).sum(dim=-1)                      # [B, N]
+                tgt = (tgt - tgt.mean(dim=-1, keepdim=True)) / (tgt.std(dim=-1, keepdim=True) + 1e-8)
+
+                # run feature_embed to get 256-dim features for scorer input
+                B, D, Np = features.shape
+                f_emb = encoder.feature_embed(
+                    features.permute(0, 2, 1).reshape(B * Np, D)
+                ).reshape(B, Np, encoder.model_dim).permute(0, 2, 1)  # [B, 256, N]
+
+            # scorer forward (with grad)
+            f_in   = f_emb.permute(0, 2, 1).reshape(B * Np, encoder.model_dim)
+            logits = encoder.gumbel_selector.scorer(f_in).reshape(B, Np)  # [B, N]
+            logits = (logits - logits.mean(dim=-1, keepdim=True)) / (logits.std(dim=-1, keepdim=True) + 1e-8)
+
+            loss = F.mse_loss(logits, tgt)
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            total += loss.item(); n += 1
+
+        print(f"    pretrain epoch {ep+1}/{epochs}  mse={total/max(n,1):.4f}", flush=True)
+
+    encoder.gumbel_selector.scorer.train(False)
+    del opt, loader, ds
+    torch.cuda.empty_cache()
 
 
 def select_salient(features, indices, pos_enc, feature_embed, block, enc_token, K):
@@ -371,7 +436,7 @@ class RISAWithPrior(nn.Module):
         nn.init.xavier_uniform_(self.encoding_token)
 
         if prior == "gumbel_K":
-            self.gumbel_selector = GumbelPointSelector(feat_dim=feat_dim, hidden=64, tau=1.0)
+            self.gumbel_selector = GumbelPointSelector(feat_dim=model_dim, hidden=128, tau=1.0)
         else:
             self.gumbel_selector = None
 
@@ -425,23 +490,27 @@ class RISAWithPrior(nn.Module):
 
         if self.prior == "gumbel_K":
             K = min(self.K, N)
-            hard_idx, y_st = self.gumbel_selector(features, K)  # [B,K], [B,N] or None
+
+            # Embed all N features first (256-dim) — scorer needs richer representations
+            B2, D, Np = features.shape
+            f_all = self.feature_embed(
+                features.permute(0, 2, 1).reshape(B2 * Np, D)
+            ).reshape(B2, Np, self.model_dim).permute(0, 2, 1)          # [B, 256, N]
+
+            hard_idx, y_soft = self.gumbel_selector(f_all, K)           # [B,K], [B,N] or None
             b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
-            if y_st is not None:
-                # Correct straight-through for top-K:
-                # Forward : hard gather (features unchanged)
-                # Backward: grad flows through y_soft via a zero-valued term
-                #   d/d_logits = d/d_y_soft * (dy_soft/d_logits)
-                # The term (y_soft_at_selected.sum() - y_soft_at_selected.sum().detach())
-                # is zero in forward but has real gradient in backward.
-                b_idx2     = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
-                features_K = features.permute(0,2,1)[b_idx2, hard_idx].permute(0,2,1)  # [B,64,K]
-                # straight-through: (y_sel - y_sel.detach()) is zero in forward
-                # but its gradient wrt scorer logits is non-zero -> scorer gets trained
-                y_sel      = y_st[b_idx2, hard_idx]                 # [B, K]
-                features_K = features_K + (y_sel - y_sel.detach()).unsqueeze(1).expand_as(features_K)
-            else:
-                features_K = features.permute(0,2,1)[b_idx, hard_idx].permute(0,2,1)
+
+            # Gather hard selected features
+            features_K = f_all.permute(0, 2, 1)[b_idx, hard_idx].permute(0, 2, 1)  # [B, 256, K]
+
+            if y_soft is not None:
+                # Fix 2: full soft weighted residual — routes gradient through ALL N positions
+                # soft_agg = y_soft @ f_all.T  [B, 256] — weighted average over all N
+                # We add (soft_agg - soft_agg.detach()) as a zero-valued residual
+                # so forward pass is unchanged but backward sees gradients from all N points
+                soft_agg = torch.bmm(f_all, y_soft.unsqueeze(2)).squeeze(2)  # [B, 256]
+                features_K = features_K + (soft_agg - soft_agg.detach()).unsqueeze(2).expand_as(features_K)
+
             pos_enc_mean = pos_enc.mean(dim=2)
             pos_enc_K    = pos_enc_mean[b_idx, hard_idx]
             pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1)
@@ -449,6 +518,21 @@ class RISAWithPrior(nn.Module):
             features_in  = features_K
             attn_indices = indices_K
             attn_pos_enc = pos_enc_K
+
+            # Skip feature_embed below since we already embedded
+            f = features_in
+            enc_token = self.encoding_token.expand(B, -1, -1).to(dtype=x.dtype)
+            for block in self.blocks:
+                f, enc_token = block(
+                    f,
+                    enc_token     = enc_token,
+                    indices       = attn_indices,
+                    pos_enc       = attn_pos_enc,
+                    update_points = True,
+                )
+            f        = self.features_post(f)
+            encoding = self.encoding_post(enc_token)
+            return encoding, f
         elif self.prior == "aggregate_K":
             K = min(self.K, N)
             with torch.no_grad():
@@ -542,6 +626,8 @@ def train_condition(encoder, dataset_name, epochs, seed, batch_size=4):
         return Q
 
     use_gumbel = encoder.prior == "gumbel_K"
+    if use_gumbel:
+        pretrain_gumbel_scorer(encoder, dataset_name, seed, epochs=10, batch_size=batch_size)
     encoder.train()
     for ep in range(epochs):
         if use_gumbel:
