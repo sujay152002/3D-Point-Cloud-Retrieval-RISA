@@ -815,6 +815,99 @@ def build_exp10(data):
     )
 
 
+def build_exp11(data):
+    if not data:
+        tbl = "<p class='pending'>Exp 11 still running — rerun update_site.sh when complete.</p>"
+        return dict(
+            id="exp11", title="Exp 11 — ImageBind Retrieval",
+            question="Can rotation-invariant 3D embeddings align with ImageBind's multimodal space for text and image queries?",
+            info=info_grid(
+                Model=tag_list(["RISA + ProjectionMLP"]),
+                Dataset=tag_list(["ShapeNet"]),
+                Metric="R@1 · R@5 · mAP@5",
+                Prior=tag_list([data["config"]["prior"]]) if data and "config" in data else "",
+            ),
+            table=tbl, ai="<em>Results pending.</em>",
+        )
+
+    cfg = data.get("config", {})
+    rot = data.get("rotation_retrieval", [])
+    t2s = data.get("text_to_shape", {})
+    i2s = data.get("image_to_shape", {})
+
+    # ── Rotation robustness table ─────────────────────────────────────────────
+    ka = {r["angle"]: r for r in rot}
+    rot_rows = [
+        td_row(
+            f"{int(r['angle'])}°",
+            fmt(r.get("R@1")), fmt(r.get("R@5")), fmt(r.get("mAP@5")),
+        )
+        for r in rot
+    ]
+    rot_tbl = make_table(
+        th("Angle", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+        rot_rows, "Shape-to-shape retrieval under SO(3) rotation — ShapeNet"
+    )
+
+    # ── Cross-modal summary table ─────────────────────────────────────────────
+    modal_rows = [
+        td_row("shape → shape (0°)", fmt(ka.get(0, {}).get("R@1")), fmt(ka.get(0, {}).get("R@5")), fmt(ka.get(0, {}).get("mAP@5"))),
+        td_row("image → shape",      fmt(i2s.get("R@1")),           fmt(i2s.get("R@5")),           fmt(i2s.get("mAP@5"))),
+        td_row("text → shape",       fmt(t2s.get("R@1")),           fmt(t2s.get("R@5")),           fmt(t2s.get("mAP@5"))),
+    ]
+    modal_tbl = make_table(
+        th("Query Modality", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+        modal_rows, "Cross-modal retrieval — ShapeNet"
+    )
+
+    # ── Rotation line chart ───────────────────────────────────────────────────
+    series11 = [("shape→shape", COLORS[0], [(r["angle"], r["R@1"]) for r in rot])]
+    chart11  = line_chart(series11, title="R@1 (%) vs rotation angle — shape-to-shape")
+
+    # ── Loss curve ───────────────────────────────────────────────────────────
+    history = data.get("train_loss_history", [])
+    if history:
+        loss_pts = [(i + 1, v) for i, v in enumerate(history)]
+        loss_series = [("InfoNCE loss", COLORS[1], loss_pts)]
+        loss_chart = line_chart(loss_series, title="Projection MLP training loss")
+    else:
+        loss_chart = ""
+
+    summary = (
+        f"prior={cfg.get('prior')}, K={cfg.get('K')}, dataset={cfg.get('dataset')}\n"
+        f"shape→shape R@1={fmt(ka.get(0,{}).get('R@1'))}%, R@5={fmt(ka.get(0,{}).get('R@5'))}%, mAP@5={fmt(ka.get(0,{}).get('mAP@5'))}%\n"
+        f"image→shape R@1={fmt(i2s.get('R@1'))}%, R@5={fmt(i2s.get('R@5'))}%, mAP@5={fmt(i2s.get('mAP@5'))}%\n"
+        f"text→shape  R@1={fmt(t2s.get('R@1'))}%, R@5={fmt(t2s.get('R@5'))}%, mAP@5={fmt(t2s.get('mAP@5'))}%\n"
+        f"rotation variance R@1: min={fmt(min(r['R@1'] for r in rot))}% max={fmt(max(r['R@1'] for r in rot))}%"
+    )
+    ai = ask_llm(
+        "You are a researcher analyzing open-vocabulary 3D shape retrieval results. "
+        "The system uses a rotation-invariant RISA encoder projected into ImageBind's multimodal embedding space via a small MLP. "
+        "This allows querying a 3D shape database with text or images, not just other shapes. "
+        f"Results:\n{summary}\n"
+        "Write 5-6 sentences covering: "
+        "(1) how well shape-to-shape retrieval holds up under arbitrary SO(3) rotations and what the variance across angles reveals, "
+        "(2) the gap between image-to-shape and text-to-shape and why it exists — the projection MLP was trained against rendered image embeddings, not text, "
+        "(3) what the text-to-shape R@1 means relative to a random baseline (1/16 classes = 6.25%), "
+        "(4) why aligning 3D point clouds to ImageBind's space is non-trivial and what the results suggest about the quality of the alignment, "
+        "(5) what improvements (e.g. dual image+text InfoNCE training) could close the text-to-shape gap."
+    )
+    return dict(
+        id="exp11", title="Exp 11 — ImageBind Retrieval",
+        question="Can rotation-invariant 3D embeddings align with ImageBind's multimodal space for text and image queries?",
+        info=info_grid(
+            Model=tag_list(["RISA + ProjectionMLP"]),
+            Dataset=tag_list(["ShapeNet"]),
+            Prior=tag_list([cfg.get("prior", "?")]),
+            Metric="R@1 · R@5 · mAP@5",
+            **{"Proj Epochs": str(cfg.get("epochs", "?"))},
+            **{"IB Dim": "1024"},
+        ),
+        table=chart11 + loss_chart + modal_tbl + rot_tbl,
+        ai=ai,
+    )
+
+
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
 CSS = """
@@ -1211,6 +1304,8 @@ EXP_OVERVIEW = [
      "ShapeNet part retrieval (16 classes). Reports class mAP@5 and part mAP@5 for 6 methods including 3D-SIFT and RISA."),
     ("Exp 10", "Prior Point Selection Ablation", "Which geometric prior best selects K=256 informative points from N=1024?",
      "9 priors on ModelNet40: full_N, random_K, fps_K, eigenentropy_K, surface_var_K, curvature_K, salient_K, aggregate_K, knn_dist_entropy_K."),
+    ("Exp 11", "ImageBind Open-Vocabulary Retrieval", "Can rotation-invariant 3D embeddings align with ImageBind's multimodal space for text and image queries?",
+     "Projects RISA embeddings into ImageBind space via a small MLP. Evaluates shape-to-shape, image-to-shape, and zero-shot text-to-shape retrieval on ShapeNet."),
 ]
 
 def build_overview():
@@ -1227,7 +1322,7 @@ def build_overview():
     # stat cards with animated counters
     stats = [
         ("93.7%", "RISA mAP@5", "Part Retrieval"),
-        ("6", "Experiments", "Across 3 datasets"),
+        ("7", "Experiments", "Across 3 datasets"),
         ("4", "Baselines", "SOTA comparisons"),
         ("19", "Rotation Angles", "0° → 180° SO(3)"),
     ]
@@ -1323,7 +1418,7 @@ def build_html(experiments):
         f'<p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p>'
         f'<div class="badges">'
         f'<span class="badge">📅 {ts}</span>'
-        f'<span class="badge">🔬 6 Experiments</span>'
+        f'<span class="badge">🔬 7 Experiments</span>'
         f'<span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span>'
         f'<span class="badge">⚡ SO(3) Invariant</span>'
         f'</div></header>'
@@ -1344,8 +1439,12 @@ def build_html(experiments):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    print("Loading results...")
-    experiments = []
+    import argparse, re
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--only", nargs="+", default=None,
+                        help="Only rebuild these panels and patch into existing HTML. e.g. --only exp11")
+    args = parser.parse_args()
+
     steps = [
         ("exp1",  lambda: build_exp1(load("exp1_retrieval.json"))),
         ("exp2",  lambda: build_exp2(load("exp2_semantic_collapse_shapenet.json"))),
@@ -1353,16 +1452,54 @@ def main():
         ("exp4",  lambda: build_exp4(load("exp4_risa_old_100ep.json"), load("exp4_risa_perceiver_100ep.json"))),
         ("exp8",  lambda: build_exp8(load("exp8_part_retrieval.json"))),
         ("exp10", lambda: build_exp10(load("exp10_prior_selection.json"))),
+        ("exp11", lambda: build_exp11(load("exp11_imagebind_retrieval.json"))),
     ]
-    for name, fn in steps:
-        print(f"Building {name}...")
-        result = fn()
-        if result:
-            experiments.append(result)
-    print("Rendering HTML...")
-    DOCS.mkdir(exist_ok=True)
-    (DOCS / "index.html").write_text(build_html(experiments))
-    print(f"Done -> {DOCS / 'index.html'}")
+
+    if args.only:
+        # Patch mode — rebuild only the requested panels, splice into existing HTML
+        html_path = DOCS / "index.html"
+        if not html_path.exists():
+            print("No existing index.html — run without --only first."); return
+        html = html_path.read_text()
+        for name, fn in steps:
+            if name not in args.only:
+                continue
+            print(f"  Building {name}...")
+            exp = fn()
+            if not exp:
+                print(f"  No data for {name}, skipping."); continue
+            new_panel = render_panel(exp)
+            pattern = re.compile(
+                rf'<div class="tab-panel[^"]*" id="{exp["id"]}".*?</div>\s*</div>',
+                re.DOTALL
+            )
+            if pattern.search(html):
+                html = pattern.sub(new_panel, html, count=1)
+                print(f"  Patched: {exp['id']}")
+            else:
+                # New panel — append before footer
+                html = html.replace('<footer', new_panel + '\n<footer', 1)
+                btn = (f'<button class="tab-btn" data-tab="{exp["id"]}" '
+                       f'onclick="showTab(\'{exp["id"]}\')">'
+                       f'{exp["title"].split("—")[0].strip()}</button>')
+                html = html.replace('</div>\n<div class="tab-panels"',
+                                    btn + '\n</div>\n<div class="tab-panels"', 1)
+                print(f"  Inserted: {exp['id']}")
+        html_path.write_text(html)
+        print(f"Done (patch) -> {html_path}")
+    else:
+        # Full rebuild
+        print("Loading results...")
+        experiments = []
+        for name, fn in steps:
+            print(f"  Building {name}...")
+            result = fn()
+            if result:
+                experiments.append(result)
+        print("Rendering HTML...")
+        DOCS.mkdir(exist_ok=True)
+        (DOCS / "index.html").write_text(build_html(experiments))
+        print(f"Done -> {DOCS / 'index.html'}")
 
 if __name__ == "__main__":
     main()
