@@ -1,6 +1,10 @@
 data/
 outputs/*.npz
 outputs/checkpoints/
+outputs/imagebind_cache/
+outputs/text_cache/
+outputs/exp*/
+.checkpoints/
 __pycache__/
 *.pyc
 *.pyo
@@ -8,3 +12,4 @@ __pycache__/
 .env
 runs/
 logs/
+nohup.out

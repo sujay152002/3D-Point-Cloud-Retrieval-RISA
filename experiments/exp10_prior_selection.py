@@ -451,6 +451,57 @@ class RISAWithPrior(nn.Module):
             nn.GELU(),
         )
 
+    def _recompute_pos_enc_for_K(self, xyz, sel_idx):
+        """Recompute proper pairwise pos_enc and kNN indices over K selected points.
+
+        xyz     : [B, 3, N]  — full point cloud
+        sel_idx : [B, K]     — indices of selected points
+
+        Returns:
+          indices_K : [B, K, A_K]  kNN indices within the K-point set
+          pos_enc_K : [B, K, A_K, 9]  pairwise geometric pos_enc over K points
+        """
+        B, _, N = xyz.shape
+        K = sel_idx.shape[1]
+        device = xyz.device
+        eps = 1e-6
+
+        b_idx = torch.arange(B, device=device).unsqueeze(1).expand(-1, K)
+
+        # XYZ of selected K points
+        xyz_T  = xyz.permute(0, 2, 1)                        # [B, N, 3]
+        xyz_K  = xyz_T[b_idx, sel_idx]                       # [B, K, 3]
+        xyz_Kt = xyz_K.permute(0, 2, 1)                      # [B, 3, K]
+
+        # Pairwise distances among K points
+        dist_pw_K = torch.cdist(xyz_K, xyz_K)                # [B, K, K]
+
+        # kNN within K points (exclude self via large self-distance)
+        dist_pw_K_ns = dist_pw_K.clone()
+        dist_pw_K_ns[:, torch.arange(K), torch.arange(K)] = float('inf')
+        A_K = min(self.feature_extractor.num_local, K - 1)
+        _, indices_K = dist_pw_K_ns.topk(A_K, dim=-1, largest=False)  # [B, K, A_K]
+
+        # Per-point distance from origin
+        dist_pt_K = xyz_Kt.norm(dim=1, keepdim=True)         # [B, 1, K]
+
+        # PCA evecs/evals over K-point neighborhoods (reuse _scale_features)
+        with torch.no_grad():
+            _, evecs_K, evals_K = self.feature_extractor._scale_features(
+                xyz_K, dist_pw_K, dist_pt_K,
+                A_K, B, K, device, xyz.dtype, eps,
+                return_evecs=True,
+            )
+
+        # Recompute pos_enc using the K-point geometry
+        pos_enc_K = self.feature_extractor.positional_encoding_features(
+            xyz=xyz_Kt, evecs=evecs_K, evals=evals_K,
+            dist_pointwise=dist_pt_K, dist_pairwise=dist_pw_K,
+            indices=indices_K,
+        )  # [B, K, A_K, 9]
+
+        return indices_K, pos_enc_K
+
     def _select(self, features, evals, xyz, indices, pos_enc):
         """Select K point indices using self.prior. Returns [B, K]."""
         B, _, N = features.shape
@@ -504,20 +555,14 @@ class RISAWithPrior(nn.Module):
             features_K = f_all.permute(0, 2, 1)[b_idx, hard_idx].permute(0, 2, 1)  # [B, 256, K]
 
             if y_soft is not None:
-                # Fix 2: full soft weighted residual — routes gradient through ALL N positions
-                # soft_agg = y_soft @ f_all.T  [B, 256] — weighted average over all N
-                # We add (soft_agg - soft_agg.detach()) as a zero-valued residual
-                # so forward pass is unchanged but backward sees gradients from all N points
+                # Route gradients through all N positions via zero-valued residual.
+                # Divide by K to avoid K× gradient amplification from expand_as.
                 soft_agg = torch.bmm(f_all, y_soft.unsqueeze(2)).squeeze(2)  # [B, 256]
-                features_K = features_K + (soft_agg - soft_agg.detach()).unsqueeze(2).expand_as(features_K)
+                residual = (soft_agg - soft_agg.detach()).unsqueeze(2) / K    # [B, 256, 1]
+                features_K = features_K + residual.expand_as(features_K)
 
-            pos_enc_mean = pos_enc.mean(dim=2)
-            pos_enc_K    = pos_enc_mean[b_idx, hard_idx]
-            pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1)
-            indices_K    = torch.arange(K, device=x.device).unsqueeze(0).unsqueeze(0).expand(B, K, -1)
+            attn_indices, attn_pos_enc = self._recompute_pos_enc_for_K(x, hard_idx)
             features_in  = features_K
-            attn_indices = indices_K
-            attn_pos_enc = pos_enc_K
 
             # Skip feature_embed below since we already embedded
             f = features_in
@@ -538,14 +583,8 @@ class RISAWithPrior(nn.Module):
             with torch.no_grad():
                 agg_features, centroid_idx = aggregate_fps_ballquery(features, x, K)  # [B, 64, K], [B, K]
             b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
-            # use centroid's own pos_enc as representative for the cluster
-            pos_enc_mean = pos_enc.mean(dim=2)                           # [B, N, 9]
-            pos_enc_K    = pos_enc_mean[b_idx, centroid_idx]             # [B, K, 9]
-            pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1) # [B, K, K, 9]
-            indices_K    = torch.arange(K, device=x.device).unsqueeze(0).unsqueeze(0).expand(B, K, -1)
+            attn_indices, attn_pos_enc = self._recompute_pos_enc_for_K(x, centroid_idx)
             features_in  = agg_features
-            attn_indices = indices_K
-            attn_pos_enc = pos_enc_K
         else:
             # Select K point indices (or None for full_N)
             sel_idx = self._select(features, evals, x, indices, pos_enc)  # [B, K] or None
@@ -555,13 +594,8 @@ class RISAWithPrior(nn.Module):
                 K = sel_idx.shape[1]
                 b_idx = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, K)
                 features_K   = features.permute(0, 2, 1)[b_idx, sel_idx].permute(0, 2, 1)
-                indices_K    = torch.arange(K, device=x.device).unsqueeze(0).unsqueeze(0).expand(B, K, -1)
-                pos_enc_mean = pos_enc.mean(dim=2)
-                pos_enc_K    = pos_enc_mean[b_idx, sel_idx]
-                pos_enc_K    = pos_enc_K.unsqueeze(2).expand(-1, -1, K, -1)
+                attn_indices, attn_pos_enc = self._recompute_pos_enc_for_K(x, sel_idx)
                 features_in  = features_K
-                attn_indices = indices_K
-                attn_pos_enc = pos_enc_K
             else:
                 features_in  = features
                 attn_indices = indices
@@ -631,7 +665,7 @@ def train_condition(encoder, dataset_name, epochs, seed, batch_size=4):
     encoder.train()
     for ep in range(epochs):
         if use_gumbel:
-            tau = max(1.0 * (0.1 ** (ep / max(epochs - 1, 1))), 0.1)
+            tau = max(1.0 * (0.5 ** (ep / max(epochs - 1, 1) * 2.5)), 0.1)
             encoder.gumbel_selector.set_tau(tau)
         ep_loss, n = 0.0, 0
         for batch in loader:

@@ -506,6 +506,127 @@ class S3DISDataset(Dataset):
 
 
 # ============================================================================
+# Objaverse Dataset
+# ============================================================================
+
+class ObjaverseDataset(Dataset):
+    """Objaverse point cloud dataset with text annotations.
+
+    Expects a pre-processed npz file at:
+        <root>/objaverse/objaverse_<split>.npz
+
+    Required npz keys:
+        points   : float32 [N, P, 3]   — P points per object (>=num_points)
+        texts    : object  [N]          — one text string per object
+                   (Objaverse tags/captions joined as a sentence)
+
+    Optional npz keys:
+        uids     : str     [N]          — Objaverse UID for each object
+        labels   : int32   [N]          — coarse category index if available
+        categories : dict              — {int: str} category mapping
+
+    Notes:
+        - No part_labels (Objaverse has no standardised per-point segmentation).
+        - val split is carved from train deterministically (80/20) via get_dataset.
+        - Heavy augmentation is applied during training: SO(3) rotation, jitter,
+          scale, and random point dropout — critical for generalisation at scale.
+    """
+
+    def __init__(self, root='data/objaverse', split='train', num_points=1024,
+                 normalize=True, augment=None):
+        self.root       = Path(root)
+        self.split      = split
+        self.num_points = num_points
+        self.normalize  = normalize
+        self.augment    = (split == 'train') if augment is None else augment
+        self.part_labels = None  # Objaverse has no per-point part segmentation
+
+        data_path = self.root / f'objaverse_{split}.npz'
+        if not data_path.exists():
+            raise FileNotFoundError(
+                f"Objaverse {split} data not found at {data_path}.\n"
+                f"Pre-process Objaverse point clouds and save as:\n"
+                f"  np.savez(path, points=..., texts=..., uids=...)\n"
+                f"See https://objaverse.allenai.org/ for the raw dataset."
+            )
+
+        data        = np.load(data_path, allow_pickle=True)
+        self.points = data['points']                          # [N, P, 3]
+        self.texts  = data['texts'].tolist()                  # list[str], length N
+        self.uids   = data['uids'].tolist() if 'uids' in data else [str(i) for i in range(len(self.points))]
+
+        if 'labels' in data:
+            self.labels     = data['labels'].astype(np.int32)
+            self.categories = data['categories'].item() if 'categories' in data else {}
+        else:
+            # No category labels — assign a dummy single-class label so downstream
+            # code that expects self.labels/categories doesn't break.
+            self.labels     = np.zeros(len(self.points), dtype=np.int32)
+            self.categories = {0: 'object'}
+
+        self.num_classes = int(np.max(self.labels)) + 1
+
+        # Pre-sample fixed point indices for val/test (deterministic evaluation)
+        if not self.augment:
+            rng = np.random.default_rng(0)
+            self._fixed_choice = [
+                rng.choice(len(p), self.num_points, replace=len(p) < self.num_points)
+                for p in self.points
+            ]
+
+        print(f"✓ Loaded Objaverse {split}: {len(self)} objects")
+
+    def __len__(self):
+        return len(self.points)
+
+    def __getitem__(self, idx):
+        points = self.points[idx].copy()   # [P, 3]
+        text   = self.texts[idx]           # str
+        label  = int(self.labels[idx])
+
+        # Point sampling
+        if self.augment:
+            choice = np.random.choice(len(points), self.num_points,
+                                      replace=len(points) < self.num_points)
+        else:
+            choice = self._fixed_choice[idx]
+        points = points[choice]            # [num_points, 3]
+
+        if self.normalize:
+            centroid = np.mean(points, axis=0)
+            points   = points - centroid
+            scale    = np.max(np.linalg.norm(points, axis=-1))
+            points   = points / (scale + 1e-8)
+
+        if self.augment:
+            # Full SO(3) rotation — no canonical orientation in Objaverse
+            Q, _ = np.linalg.qr(np.random.randn(3, 3).astype(np.float32))
+            if np.linalg.det(Q) < 0:
+                Q[:, 0] *= -1
+            points = points @ Q.T
+
+            # Jitter (sigma=0.01, clip=0.05)
+            points = points + np.clip(
+                np.random.normal(0, 0.01, points.shape).astype(np.float32),
+                -0.05, 0.05
+            )
+
+            # Random scale (0.8–1.25)
+            points = points * np.random.uniform(0.8, 1.25)
+
+            # Random point dropout — simulate occlusion / sparse scans
+            if np.random.random() < 0.5:
+                n_keep = np.random.randint(int(0.85 * self.num_points), self.num_points)
+                keep   = np.random.choice(self.num_points, n_keep, replace=False)
+                pad    = np.random.choice(keep, self.num_points - n_keep, replace=True)
+                points = points[np.concatenate([keep, pad])]
+
+        pts_t = torch.from_numpy(points.astype(np.float32)).permute(1, 0)  # [3, num_points]
+        lbl_t = torch.tensor(label, dtype=torch.long)
+        return pts_t, lbl_t, text   # text returned as plain str — collate_fn handles it
+
+
+# ============================================================================
 # Unified Dataset Loader
 # ============================================================================
 
@@ -530,6 +651,7 @@ def get_dataset(name, split='train', root='data', num_points=1024, download=Fals
         'scanobjectnn': ScanObjectNNDataset,
         'partnet':      PartNetDataset,
         's3dis':        S3DISDataset,
+        'objaverse':    ObjaverseDataset,
     }
 
     if name.lower() == 'synthetic':
@@ -576,6 +698,29 @@ def get_dataset(name, split='train', root='data', num_points=1024, download=Fals
                 download=download,
                 **kwargs
             )
+        # Objaverse: if a dedicated val npz exists use it; otherwise carve from train
+        if name.lower() == 'objaverse':
+            val_path = Path(root) / 'objaverse' / 'objaverse_val.npz'
+            if val_path.exists():
+                return ObjaverseDataset(
+                    root=Path(root) / 'objaverse',
+                    split='val',
+                    num_points=num_points,
+                    augment=False,
+                    **kwargs
+                )
+            base_ds = ObjaverseDataset(
+                root=Path(root) / 'objaverse',
+                split='train',
+                num_points=num_points,
+                augment=False,
+                **kwargs
+            )
+            n = len(base_ds)
+            indices   = torch.randperm(n, generator=torch.Generator().manual_seed(42)).tolist()
+            val_start = int(n * 0.80)
+            from torch.utils.data import Subset
+            return Subset(base_ds, indices[val_start:])
         base_ds = registry[name.lower()](
             root=Path(root) / name.lower(),
             split='train',
@@ -600,6 +745,24 @@ def get_dataset(name, split='train', root='data', num_points=1024, download=Fals
                 download=download,
                 **kwargs
             )
+        # Objaverse: if a dedicated train npz exists use it as-is (no carving needed
+        # when the dataset is large enough that a separate val file makes more sense)
+        if name.lower() == 'objaverse':
+            base_ds = ObjaverseDataset(
+                root=Path(root) / 'objaverse',
+                split='train',
+                num_points=num_points,
+                augment=True,
+                **kwargs
+            )
+            val_path = Path(root) / 'objaverse' / 'objaverse_val.npz'
+            if val_path.exists():
+                return base_ds   # dedicated val file exists — use all of train
+            n = len(base_ds)
+            indices   = torch.randperm(n, generator=torch.Generator().manual_seed(42)).tolist()
+            train_end = int(n * 0.80)
+            from torch.utils.data import Subset
+            return Subset(base_ds, indices[:train_end])
         base_ds = registry[name.lower()](
             root=Path(root) / name.lower(),
             split='train',
