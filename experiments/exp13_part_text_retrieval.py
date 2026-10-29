@@ -119,6 +119,140 @@ for cls_idx, part_ids in enumerate(SHAPE_NET_PART_SEG_CLASSES):
         pname = part_names[local_idx] if local_idx < len(part_names) else f"part{local_idx}"
         PART_ID_TO_INFO[global_id] = (cls_name, pname)
 
+# ── PartNet part name mapping ─────────────────────────────────────────────────
+# PartNet uses per-category 0-based part IDs (remapped during preprocessing).
+# These names come from the after_merging_label_ids level-3 taxonomy.
+# Each entry maps local_part_id → part_name for that category.
+PARTNET_PART_NAMES: dict[str, dict[int, str]] = {
+    "Bag":              {0: "body", 1: "handle", 2: "strap", 3: "pocket"},
+    "Bed":              {0: "bed frame", 1: "headboard", 2: "footboard",
+                         3: "leg", 4: "sleep area", 5: "side rail",
+                         6: "ladder", 7: "support", 8: "surface",
+                         9: "drawer", 10: "slat", 11: "mattress",
+                         12: "pillow", 13: "bar", 14: "column"},
+    "Bottle":           {0: "body", 1: "cap", 2: "neck",
+                         3: "mouth", 4: "base", 5: "label",
+                         6: "handle", 7: "nozzle", 8: "pump"},
+    "Bowl":             {0: "body", 1: "base", 2: "lip", 3: "handle"},
+    "Chair":            {0: "back", 1: "seat", 2: "leg", 3: "arm",
+                         4: "armrest", 5: "back support", 6: "seat support",
+                         7: "footrest", 8: "wheel", 9: "star base",
+                         10: "seat cushion", 11: "back cushion",
+                         12: "back frame", 13: "seat frame",
+                         14: "headrest", 15: "connector",
+                         16: "rocker", 17: "stretcher",
+                         18: "frame", 19: "base",
+                         20: "central support", 21: "runner",
+                         22: "arm sofa", 23: "back sofa",
+                         24: "ottoman", 25: "ottoman frame",
+                         26: "ottoman base", 27: "ottoman cushion",
+                         28: "ottoman leg", 29: "ottoman wheel",
+                         30: "ottoman arm", 31: "side panel",
+                         32: "lounge chair back", 33: "lounge chair base",
+                         34: "lounge chair leg", 35: "lounge chair arm",
+                         36: "lounge chair frame", 37: "lounge bar",
+                         38: "rocking bar"},
+    "Clock":            {0: "body", 1: "face", 2: "hand",
+                         3: "frame", 4: "base", 5: "pendulum",
+                         6: "knob", 7: "battery", 8: "button",
+                         9: "leg", 10: "hook"},
+    "Dishwasher":       {0: "body", 1: "door", 2: "rack",
+                         3: "handle", 4: "control panel", 5: "base",
+                         6: "foot"},
+    "Display":          {0: "screen", 1: "base", 2: "support", 3: "frame"},
+    "Door":             {0: "door", 1: "frame", 2: "handle",
+                         3: "hinge", 4: "knob"},
+    "Earphone":         {0: "earcup", 1: "headband", 2: "cable",
+                         3: "driver", 4: "cushion", 5: "microphone",
+                         6: "jack", 7: "adjuster", 8: "clip",
+                         9: "cover"},
+    "Faucet":           {0: "body", 1: "handle", 2: "spout",
+                         3: "base", 4: "knob", 5: "valve",
+                         6: "aerator", 7: "pipe", 8: "escutcheon",
+                         9: "cartridge", 10: "supply line", 11: "drain"},
+    "Hat":              {0: "crown", 1: "brim", 2: "band",
+                         3: "button", 4: "visor", 5: "ear flap"},
+    "Keyboard":         {0: "key", 1: "body", 2: "cable"},
+    "Knife":            {0: "blade", 1: "handle", 2: "guard",
+                         3: "bolster", 4: "tip", 5: "spine",
+                         6: "edge", 7: "rivet", 8: "tang", 9: "pommel"},
+    "Lamp":             {0: "base", 1: "shade", 2: "bulb",
+                         3: "tube", 4: "arm", 5: "canopy",
+                         6: "socket", 7: "switch", 8: "cord",
+                         9: "diffuser", 10: "head", 11: "clamp",
+                         12: "harp", 13: "finial", 14: "stem",
+                         15: "support", 16: "column", 17: "foot",
+                         18: "reflector", 19: "cover", 20: "chain",
+                         21: "ring", 22: "bar", 23: "mounting",
+                         24: "ceiling plate", 25: "globe",
+                         26: "chimney", 27: "font", 28: "bracket",
+                         29: "base plate", 30: "neck", 31: "connector",
+                         32: "rail", 33: "spotlight",
+                         34: "string light", 35: "rope",
+                         36: "pendant", 37: "wire", 38: "cage",
+                         39: "frame", 40: "panel"},
+    "Laptop":           {0: "screen", 1: "keyboard", 2: "hinge"},
+    "Microwave":        {0: "body", 1: "door", 2: "handle",
+                         3: "control panel", 4: "foot", 5: "window"},
+    "Mug":              {0: "body", 1: "handle", 2: "base", 3: "lip"},
+    "Refrigerator":     {0: "body", 1: "door", 2: "handle",
+                         3: "hinge", 4: "shelf", 5: "foot", 6: "drawer"},
+    "Scissors":         {0: "blade", 1: "handle", 2: "pivot"},
+    "StorageFurniture": {0: "body", 1: "door", 2: "drawer",
+                         3: "leg", 4: "shelf", 5: "back panel",
+                         6: "top panel", 7: "handle", 8: "side panel",
+                         9: "bottom panel", 10: "foot", 11: "rail",
+                         12: "bar", 13: "frame", 14: "support",
+                         15: "knob", 16: "lock", 17: "hinge",
+                         18: "column", 19: "base", 20: "pull",
+                         21: "runner", 22: "divider", 23: "countertop"},
+    "Table":            {0: "top", 1: "leg", 2: "support",
+                         3: "shelf", 4: "drawer", 5: "bar stretcher",
+                         6: "pedestal", 7: "frame", 8: "apron",
+                         9: "base", 10: "wheel", 11: "leaf",
+                         12: "cross stretcher", 13: "tray",
+                         14: "handle", 15: "connector",
+                         16: "side panel", 17: "back panel",
+                         18: "door", 19: "bottom panel",
+                         20: "runner", 21: "pull", 22: "knob",
+                         23: "lock", 24: "foot", 25: "column",
+                         26: "glass top", 27: "rim", 28: "center support",
+                         29: "lower shelf", 30: "back foot",
+                         31: "front foot", 32: "desktop",
+                         33: "partition", 34: "keyboard tray",
+                         35: "monitor stand", 36: "cup holder",
+                         37: "side rail", 38: "central support",
+                         39: "round top", 40: "bench top",
+                         41: "bench leg", 42: "bench support",
+                         43: "bench foot", 44: "bench frame",
+                         45: "bench apron", 46: "bench stretcher",
+                         47: "bench connector", 48: "bench drawer",
+                         49: "bench shelf", 50: "bench rail"},
+    "TrashCan":         {0: "body", 1: "lid", 2: "base",
+                         3: "handle", 4: "wheel", 5: "pedal",
+                         6: "inner", 7: "bag holder",
+                         8: "foot", 9: "frame", 10: "opening"},
+    "Vase":             {0: "body", 1: "base", 2: "lip",
+                         3: "handle", 4: "neck", 5: "foot"},
+}
+
+
+def get_partnet_part_name(category: str, local_part_id: int) -> str:
+    """Look up part name for a PartNet (category, local_part_id) pair.
+
+    Falls back to a generic name if the category or id is unknown.
+    Category matching is case-insensitive.
+    """
+    # Case-insensitive category lookup
+    cat_key = next(
+        (k for k in PARTNET_PART_NAMES if k.lower() == category.lower()),
+        None
+    )
+    if cat_key is None:
+        return f"part{local_part_id}"
+    return PARTNET_PART_NAMES[cat_key].get(local_part_id, f"part{local_part_id}")
+
+
 # Parts where multiple instances genuinely exist per shape.
 # Maps part_name → typical max count (used as upper bound for connected-component estimate).
 COUNTABLE_PARTS: dict[str, int] = {
@@ -224,6 +358,40 @@ def generate_description(class_name: str, part_ids_present: list[int],
     if not part_ids_present:
         return f"a {class_name}"
 
+    part_phrases = _build_part_phrases(part_ids_present, part_point_counts, part_point_xyz)
+    parts_str    = _join_part_phrases(part_phrases)
+
+    article = "an" if class_name[0] in "aeiou" else "a"
+    return f"{article} {class_name} with {parts_str}"
+
+
+# Prefixes for class-agnostic descriptions — mirror the eval query style and
+# add structural rephrasings for text augmentation diversity. Each prefix
+# becomes a separate training view so the projection learns invariance to
+# phrasing while keeping part composition as the discriminative signal.
+_AGOSTIC_PREFIXES = [
+    "something with",
+    "a shape with",
+    "an object with",
+    "a 3D model with",
+    "a 3D object with",
+    "a model with",
+    "something that has",
+    "a shape that has",
+    "an object that has",
+]
+
+
+def _build_part_phrases(
+    part_ids_present: list[int],
+    part_point_counts: dict[int, int],
+    part_point_xyz: dict[int, np.ndarray] = None,
+) -> list[str]:
+    """Shared helper: build count-aware part phrases for a shape.
+
+    Returns a list like ["a back", "a seat", "4 legs", "2 arms"].
+    Used by both generate_description() and generate_agnostic_description().
+    """
     part_phrases = []
     seen_names   = set()
 
@@ -244,15 +412,69 @@ def generate_description(class_name: str, part_ids_present: list[int],
 
         part_phrases.append(_pluralise(pname, count))
 
-    if len(part_phrases) == 1:
-        parts_str = part_phrases[0]
-    elif len(part_phrases) == 2:
-        parts_str = f"{part_phrases[0]} and {part_phrases[1]}"
-    else:
-        parts_str = ", ".join(part_phrases[:-1]) + f", and {part_phrases[-1]}"
+    return part_phrases
 
-    article = "an" if class_name[0] in "aeiou" else "a"
-    return f"{article} {class_name} with {parts_str}"
+
+def _join_part_phrases(part_phrases: list[str]) -> str:
+    """Join part phrases with Oxford comma: 'a back, a seat, and 4 legs'."""
+    if len(part_phrases) == 1:
+        return part_phrases[0]
+    elif len(part_phrases) == 2:
+        return f"{part_phrases[0]} and {part_phrases[1]}"
+    else:
+        return ", ".join(part_phrases[:-1]) + f", and {part_phrases[-1]}"
+
+
+def generate_agnostic_description(
+    class_name: str,
+    part_ids_present: list[int],
+    part_point_counts: dict[int, int],
+    part_point_xyz: dict[int, np.ndarray] = None,
+    rng: random.Random = None,
+) -> str:
+    """Generate a class-agnostic part-composition description for one shape.
+
+    Like generate_description() but replaces the class name with a generic
+    prefix ("something with", "a shape with", "an object with") to match
+    the phrasing used by PART_QUERIES at evaluation time.
+
+    e.g. "a chair with a back, a seat, and 4 legs"
+      → "something with a back, a seat, and 4 legs"
+    """
+    if not part_ids_present:
+        prefix = rng.choice(_AGOSTIC_PREFIXES) if rng else _AGOSTIC_PREFIXES[0]
+        return f"{prefix} parts"
+
+    part_phrases = _build_part_phrases(part_ids_present, part_point_counts, part_point_xyz)
+    parts_str    = _join_part_phrases(part_phrases)
+
+    prefix = rng.choice(_AGOSTIC_PREFIXES) if rng else _AGOSTIC_PREFIXES[0]
+    return f"{prefix} {parts_str}"
+
+
+def generate_agnostic_descriptions_all(
+    class_name: str,
+    part_ids_present: list[int],
+    part_point_counts: dict[int, int],
+    part_point_xyz: dict[int, np.ndarray] = None,
+) -> list[str]:
+    """Generate ALL class-agnostic variants for one shape (one per prefix).
+
+    Returns a list of strings, one per prefix in _AGOSTIC_PREFIXES.
+    Each string uses the same part composition but a different prefix.
+
+    e.g. ["something with a back, a seat, and 4 legs",
+          "a shape with a back, a seat, and 4 legs",
+          "an object with a back, a seat, and 4 legs",
+          ...]
+    """
+    if not part_ids_present:
+        return [f"{prefix} parts" for prefix in _AGOSTIC_PREFIXES]
+
+    part_phrases = _build_part_phrases(part_ids_present, part_point_counts, part_point_xyz)
+    parts_str    = _join_part_phrases(part_phrases)
+
+    return [f"{prefix} {parts_str}" for prefix in _AGOSTIC_PREFIXES]
 
 
 def build_shape_descriptions(dataset, categories: dict) -> list[str]:
@@ -299,6 +521,103 @@ def build_shape_descriptions(dataset, categories: dict) -> list[str]:
         descriptions.append(generate_description(cls_name, present, cnt, part_xyz))
 
     return descriptions
+
+
+def build_shape_descriptions_dual(
+    dataset, categories: dict,
+    dataset_name: str = "shapenet",
+) -> tuple[list[str], list[list[str]]]:
+    """Generate class-bearing and ALL class-agnostic descriptions per shape.
+
+    Works with both ShapeNet (global 50 part IDs, 16 classes) and PartNet
+    (per-category 0-based part IDs, 24 classes).  Pass dataset_name="partnet"
+    to activate PartNet part-name lookups.
+
+    Returns (class_descs, agnostic_descs_all) — two lists aligned with
+    dataset indices.
+
+    Class-bearing:      "a chair with a back, a seat, and 4 legs"
+    Class-agnostic (all): ["something with a back, a seat, and 4 legs",
+                           "a shape with a back, a seat, and 4 legs",
+                           ...]  — one per prefix in _AGOSTIC_PREFIXES
+    """
+    from torch.utils.data import Subset
+    if isinstance(dataset, Subset):
+        raw_ds  = dataset.dataset
+        indices = dataset.indices
+    else:
+        raw_ds  = dataset
+        indices = range(len(raw_ds))
+
+    part_labels_all = raw_ds.part_labels
+    labels_all      = raw_ds.labels
+    points_all      = getattr(raw_ds, "points", None)
+    is_partnet      = dataset_name.lower() == "partnet"
+
+    class_descs        = []
+    agnostic_descs_all = []
+    for raw_i in indices:
+        cls_idx   = int(labels_all[raw_i])
+        cls_name  = categories.get(cls_idx, f"class{cls_idx}")
+        per_point = part_labels_all[raw_i]
+
+        cnt = Counter(per_point.tolist())
+
+        if is_partnet:
+            # PartNet: part IDs are already local (0-based per category).
+            # All non-negative IDs present in this shape are valid.
+            present = sorted(pid for pid in cnt if pid >= 0)
+
+            # Build a per-shape PART_ID_TO_INFO equivalent using PartNet names
+            partnet_id_info = {
+                pid: (cls_name, get_partnet_part_name(cls_name, pid))
+                for pid in present
+            }
+
+            part_xyz = None
+            if points_all is not None:
+                xyz = points_all[raw_i]
+                if hasattr(xyz, "numpy"):
+                    xyz = xyz.numpy()
+                if xyz.shape[0] == 3 and xyz.ndim == 2:
+                    xyz = xyz.T
+                part_xyz = {pid: xyz[per_point == pid] for pid in present}
+
+            # Temporarily override PART_ID_TO_INFO for this shape
+            _orig = dict(PART_ID_TO_INFO)
+            PART_ID_TO_INFO.update(partnet_id_info)
+            class_descs.append(
+                generate_description(cls_name, present, cnt, part_xyz)
+            )
+            agnostic_descs_all.append(
+                generate_agnostic_descriptions_all(cls_name, present, cnt, part_xyz)
+            )
+            # Restore
+            PART_ID_TO_INFO.clear()
+            PART_ID_TO_INFO.update(_orig)
+
+        else:
+            # ShapeNet: part IDs are global (0–49); validate against class's valid set
+            valid_ids = set(SHAPE_NET_PART_SEG_CLASSES[cls_idx])
+            present   = sorted(pid for pid in cnt if pid in valid_ids)
+
+            part_xyz = None
+            if points_all is not None:
+                xyz = points_all[raw_i]
+                if hasattr(xyz, "numpy"):
+                    xyz = xyz.numpy()
+                if xyz.shape[0] == 3 and xyz.ndim == 2:
+                    xyz = xyz.T
+                part_xyz = {pid: xyz[per_point == pid] for pid in present}
+
+            class_descs.append(
+                generate_description(cls_name, present, cnt, part_xyz)
+            )
+            agnostic_descs_all.append(
+                generate_agnostic_descriptions_all(cls_name, present, cnt, part_xyz)
+            )
+
+    return class_descs, agnostic_descs_all
 
 
 # ── Sentence-transformer encoder ──────────────────────────────────────────────
@@ -424,8 +743,8 @@ def train_projection(
     criterion,
     dataset,
     val_dataset,
-    text_embs:     torch.Tensor,   # [N_train, ST_DIM] — one per training shape
-    val_text_embs: torch.Tensor,   # [N_val,   ST_DIM] — one per val shape
+    text_embs:     torch.Tensor,   # [N_train, n_views, ST_DIM] — multiple views per shape
+    val_text_embs: torch.Tensor,   # [N_val,   n_views, ST_DIM]
     epochs:        int,
     batch_size:    int,
     lr:            float,
@@ -434,11 +753,19 @@ def train_projection(
 ) -> tuple[list, list]:
     """Train ProjectionMLP so RISA embeddings align to per-shape part descriptions.
 
+    text_embs can be 2-D [N, D] (single view) or 3-D [N, n_views, D] (multi-view).
+    When multi-view, a random view is sampled per shape each batch — text augmentation
+    that teaches the projection to be invariant to description phrasing.
+
     Tracks val loss each epoch and saves the best checkpoint.
     Returns (train_history, val_history).
     """
     text_embs     = text_embs.to(DEVICE)
     val_text_embs = val_text_embs.to(DEVICE)
+
+    # Detect multi-view: 3-D [N, n_views, D]
+    multi_view = text_embs.dim() == 3
+    n_views    = text_embs.size(1) if multi_view else 1
 
     # _IndexedDataset returns (pts, label, part_label, idx) for ShapeNet
     # batch[0]=pts, batch[-1]=idx; label and part_label unused during training
@@ -472,7 +799,17 @@ def train_projection(
             idx = batch[-1]              # dataset indices [B]
             if pts.shape[1] != 3:
                 pts = pts.permute(0, 2, 1)
-            z_text = text_embs[idx]      # [B, ST_DIM]
+
+            if multi_view:
+                # text_embs[idx]: [B, n_views, D] → sample one random view per shape
+                views = text_embs[idx]                           # [B, n_views, D]
+                view_idx = torch.randint(0, n_views, (views.size(0),),
+                                          device=DEVICE)          # [B]
+                z_text = views[torch.arange(views.size(0), device=DEVICE),
+                                view_idx]                         # [B, D]
+            else:
+                z_text = text_embs[idx]                           # [B, D]
+
             with torch.no_grad():
                 z_risa, _ = unpack_encoder_output(encoder(pts))
             z_proj = proj(z_risa)
@@ -488,7 +825,7 @@ def train_projection(
         train_avg = total_loss / max(n_batches, 1)
         train_history.append(train_avg)
 
-        # Validation loss
+        # Validation loss — average over all views for stability
         proj.eval(); criterion.eval()
         val_loss, val_n = 0.0, 0
         with torch.inference_mode():
@@ -497,10 +834,20 @@ def train_projection(
                 idx = batch[-1]
                 if pts.shape[1] != 3:
                     pts = pts.permute(0, 2, 1)
-                z_text = val_text_embs[idx]
                 z_risa, _ = unpack_encoder_output(encoder(pts))
-                val_loss += criterion(proj(z_risa), z_text).item()
-                val_n    += 1
+                z_proj = proj(z_risa)
+
+                if multi_view:
+                    # Average loss across all views
+                    views = val_text_embs[idx]      # [B, n_views, D]
+                    v_loss = 0.0
+                    for v in range(n_views):
+                        v_loss += criterion(z_proj, views[:, v, :]).item()
+                    val_loss += v_loss / n_views
+                else:
+                    val_loss += criterion(z_proj, val_text_embs[idx]).item()
+
+                val_n += 1
         val_avg = val_loss / max(val_n, 1)
         val_history.append(val_avg)
 
@@ -528,7 +875,8 @@ def train_projection(
 
 # ── Part-composition evaluation ───────────────────────────────────────────────
 
-# Canonical part-composition queries — designed to span multiple classes
+# ShapeNet part-composition queries — designed to span multiple classes.
+# Tuple: (query_text, {part_names_to_match}, {expected_class_names})
 PART_QUERIES = [
     # Single-part structural queries (cross-class)
     ("something with legs",            {"leg"},         {"chair", "table"}),
@@ -546,6 +894,28 @@ PART_QUERIES = [
     ("something with a deck",          {"deck"},        {"skateboard"}),
 ]
 
+# PartNet part-composition queries — use PartNet category names (title-case)
+# and PartNet part vocabulary from PARTNET_PART_NAMES.
+PARTNET_PART_QUERIES = [
+    # Single-part structural queries (cross-class)
+    ("something with legs",            {"leg"},         {"Chair", "Table", "Bed", "StorageFurniture"}),
+    ("a shape with a handle",          {"handle"},      {"Bag", "Knife", "Mug", "Faucet", "Door",
+                                                          "Dishwasher", "Refrigerator", "StorageFurniture"}),
+    ("an object with a blade",         {"blade"},       {"Knife", "Scissors"}),
+    ("something with a drawer",        {"drawer"},      {"StorageFurniture", "Table", "Refrigerator"}),
+    ("a shape with a door",            {"door"},        {"StorageFurniture", "Dishwasher",
+                                                          "Refrigerator", "Microwave"}),
+    ("an object with a lid",           {"lid"},         {"TrashCan", "Bottle"}),
+    ("something with a shade",         {"shade"},       {"Lamp"}),
+    ("a shape with a wheel",           {"wheel"},       {"Chair", "TrashCan"}),
+    ("an object with a screen",        {"screen"},      {"Display", "Laptop"}),
+    # Multi-part queries (more specific)
+    ("a shape with a back and a seat", {"back", "seat"},{"Chair"}),
+    ("something with a top and legs",  {"top", "leg"},  {"Table"}),
+    ("an object with a body and a cap",{"body", "cap"}, {"Bottle"}),
+    ("a shape with a blade and handle",{"blade", "handle"}, {"Knife", "Scissors"}),
+]
+
 
 def evaluate_part_queries(
     queries:         list,
@@ -556,23 +926,45 @@ def evaluate_part_queries(
     st_model,
     raw_ds,
     topk:            int = 10,
+    dataset_name:    str = "shapenet",
 ) -> list:
     """For each part query, retrieve top-k shapes and measure:
     - part_hit_rate: fraction of top-k that contain the queried part
     - class_hit_rate: fraction of top-k whose class is in expected_classes
 
+    Works with both ShapeNet (global part IDs via PART_ID_TO_INFO) and
+    PartNet (local per-category 0-based part IDs via PARTNET_PART_NAMES).
+    Pass dataset_name="partnet" to activate PartNet part-name matching.
+
     gallery_indices maps gallery positions back to raw_ds indices so part
     lookup is always aligned regardless of dataset wrapping/ordering.
     """
-    part_labels_all = raw_ds.part_labels   # [N_raw, 1024]
-    shape_part_sets = [
-        set(np.unique(part_labels_all[i]).tolist())
-        for i in range(len(part_labels_all))
-    ]
+    part_labels_all = raw_ds.part_labels   # [N_raw, P]
+    is_partnet      = dataset_name.lower() == "partnet"
 
-    part_name_to_ids: dict[str, set] = {}
-    for gid, (_, pname) in PART_ID_TO_INFO.items():
-        part_name_to_ids.setdefault(pname, set()).add(gid)
+    if is_partnet:
+        # For PartNet: build per-shape {part_name → set_of_local_ids} lookup
+        # using the shape's category name and PARTNET_PART_NAMES.
+        labels_all = raw_ds.labels
+        shape_part_name_sets: list[set] = []
+        for i in range(len(part_labels_all)):
+            cls_idx  = int(labels_all[i])
+            cls_name = categories.get(cls_idx, "")
+            local_ids = set(np.unique(part_labels_all[i]).tolist())
+            names = {
+                get_partnet_part_name(cls_name, pid)
+                for pid in local_ids if pid >= 0
+            }
+            shape_part_name_sets.append(names)
+    else:
+        # ShapeNet: match via global part IDs → names from PART_ID_TO_INFO
+        shape_part_sets = [
+            set(np.unique(part_labels_all[i]).tolist())
+            for i in range(len(part_labels_all))
+        ]
+        part_name_to_ids: dict[str, set] = {}
+        for gid, (_, pname) in PART_ID_TO_INFO.items():
+            part_name_to_ids.setdefault(pname, set()).add(gid)
 
     # Batch-encode all query texts at once
     query_texts = [q[0] for q in queries]
@@ -592,12 +984,18 @@ def evaluate_part_queries(
             if cls_name in expected_classes:
                 class_hits += 1
 
-            raw_idx     = int(gallery_indices[gal_pos])
-            shape_parts = shape_part_sets[raw_idx] if raw_idx < len(shape_part_sets) else set()
-            hit = all(
-                any(gid in shape_parts for gid in part_name_to_ids.get(pn, set()))
-                for pn in part_names
-            )
+            raw_idx = int(gallery_indices[gal_pos])
+            if is_partnet:
+                shape_names = shape_part_name_sets[raw_idx] \
+                    if raw_idx < len(shape_part_name_sets) else set()
+                hit = all(pn in shape_names for pn in part_names)
+            else:
+                shape_parts = shape_part_sets[raw_idx] \
+                    if raw_idx < len(shape_part_sets) else set()
+                hit = all(
+                    any(gid in shape_parts for gid in part_name_to_ids.get(pn, set()))
+                    for pn in part_names
+                )
             if hit:
                 part_hits += 1
 
@@ -719,41 +1117,70 @@ def main():
         print(f"  Loaded cached projection checkpoint: {auto_proj_ckpt}")
         history = []
     else:
-        # Generate per-shape descriptions for training set
+        # Generate per-shape dual descriptions (class-bearing + all class-agnostic)
         print("  Generating per-shape part descriptions for training set…")
-        train_descs = build_shape_descriptions(train_ds, categories)
-        print(f"  Sample descriptions:")
-        # Show a few examples
+        train_class_descs, train_agnostic_descs_all = build_shape_descriptions_dual(
+            train_ds, categories
+        )
+        n_agnostic = len(train_agnostic_descs_all[0]) if train_agnostic_descs_all else 0
+        print(f"  {n_agnostic} class-agnostic variants per shape")
+        print(f"  Sample descriptions (class-bearing / class-agnostic):")
         shown = set()
         raw_ds_train = getattr(train_ds, "dataset", train_ds)
         train_indices = getattr(train_ds, "indices", range(len(train_ds)))
-        for pos, (raw_i, desc) in enumerate(zip(train_indices, train_descs)):
+        for pos, (raw_i, cd, ads) in enumerate(zip(train_indices, train_class_descs, train_agnostic_descs_all)):
             cls = int(raw_ds_train.labels[raw_i])
             if cls not in shown:
-                print(f"    [{categories[cls]}] {desc}")
+                print(f"    [{categories[cls]}] {cd}")
+                for ad in ads:
+                    print(f"            → {ad}")
                 shown.add(cls)
-            if len(shown) >= 6:
+            if len(shown) >= 4:
                 break
 
-        # Encode all training descriptions
-        print(f"\n  Encoding {len(train_descs)} descriptions with {args.st_model}…")
-        train_text_embs = encode_texts(train_descs, st_model)   # [N_train, ST_DIM]
-        print(f"  Text embeddings: {train_text_embs.shape}")
+        # Encode all view sets and stack into [N_train, 1 + n_agnostic, ST_DIM]
+        # View 0: class-bearing, Views 1..n: class-agnostic (one per prefix)
+        print(f"\n  Encoding {len(train_class_descs)} class-bearing + {len(train_class_descs) * n_agnostic} class-agnostic descriptions…")
+        train_class_embs = encode_texts(train_class_descs, st_model)     # [N, D]
+
+        # Flatten all agnostic variants: [N * n_agnostic] → encode → reshape
+        flat_agnostic = [d for shape_ads in train_agnostic_descs_all for d in shape_ads]
+        train_agnostic_embs = encode_texts(flat_agnostic, st_model)      # [N * n_agnostic, D]
+        train_agnostic_embs = train_agnostic_embs.view(len(train_class_descs), n_agnostic, -1)  # [N, n_agnostic, D]
+
+        # Stack: [N, 1 + n_agnostic, D]
+        train_text_embs = torch.cat([
+            train_class_embs.unsqueeze(1),      # [N, 1, D]
+            train_agnostic_embs,                 # [N, n_agnostic, D]
+        ], dim=1)
+        print(f"  Text embeddings: {train_text_embs.shape}  (1 class + {n_agnostic} agnostic views)")
 
         # Save descriptions for inspection
         desc_path = out_dir / "train_descriptions.json"
         with open(desc_path, "w") as f:
-            json.dump(train_descs[:500], f, indent=2)   # save first 500 as sample
+            json.dump({
+                "class": train_class_descs[:500],
+                "agnostic": [ads[:3] for ads in train_agnostic_descs_all[:500]],
+            }, f, indent=2)
         print(f"  Sample descriptions saved → {desc_path}")
 
-        # Generate val descriptions for best-checkpoint tracking
+        # Generate val dual descriptions for best-checkpoint tracking
         print("  Generating val shape descriptions…")
         val_ds_train = get_dataset(args.dataset, split="val", root=DATA_ROOT, num_points=N_POINTS)
-        val_descs_train = build_shape_descriptions(val_ds_train, categories)
-        val_text_embs_train = encode_texts(val_descs_train, st_model)
+        val_class_descs, val_agnostic_descs_all = build_shape_descriptions_dual(
+            val_ds_train, categories
+        )
+        val_class_embs = encode_texts(val_class_descs, st_model)
+        flat_val_agnostic = [d for shape_ads in val_agnostic_descs_all for d in shape_ads]
+        val_agnostic_embs = encode_texts(flat_val_agnostic, st_model)
+        val_agnostic_embs = val_agnostic_embs.view(len(val_class_descs), n_agnostic, -1)
+        val_text_embs_train = torch.cat([
+            val_class_embs.unsqueeze(1),
+            val_agnostic_embs,
+        ], dim=1)  # [N_val, 1 + n_agnostic, D]
         print(f"  Val text embeddings: {val_text_embs_train.shape}")
 
-        print(f"\n  Training projection MLP…")
+        print(f"\n  Training projection MLP (multi-view text augmentation)…")
         train_history, val_history = train_projection(
             encoder       = encoder,
             proj          = proj,

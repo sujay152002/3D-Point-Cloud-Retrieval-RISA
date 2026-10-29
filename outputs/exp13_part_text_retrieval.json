@@ -5,8 +5,8 @@
     "epochs": 50,
     "batch_size": 32,
     "lr": 0.0001,
-    "risa_ckpt": null,
-    "proj_ckpt": null,
+    "risa_ckpt": "outputs/checkpoints/exp10_aggregate_K.pt",
+    "proj_ckpt": "outputs/exp13_aggregate_K_20261016_122824/proj_best.pt",
     "st_model": "all-mpnet-base-v2",
     "dataset": "shapenet",
     "topk_eval": 10,
@@ -15,63 +15,63 @@
   "rotation_retrieval": [
     {
       "angle": 0,
-      "R@1": 0.9261869436201781,
-      "R@5": 0.9703264094955489,
-      "mAP@5": 0.8934582095571106
+      "R@1": 0.9158011869436202,
+      "R@5": 0.9718100890207715,
+      "mAP@5": 0.8830712164865492
     },
     {
       "angle": 15,
-      "R@1": 0.9265578635014837,
-      "R@5": 0.9681008902077152,
-      "mAP@5": 0.8939972797790073
+      "R@1": 0.9183976261127597,
+      "R@5": 0.9684718100890207,
+      "mAP@5": 0.8815553906398551
     },
     {
       "angle": 30,
-      "R@1": 0.9243323442136498,
+      "R@1": 0.9176557863501483,
       "R@5": 0.9688427299703264,
-      "mAP@5": 0.8919782392249528
+      "mAP@5": 0.883034124563639
     },
     {
       "angle": 45,
-      "R@1": 0.9217359050445104,
-      "R@5": 0.9684718100890207,
-      "mAP@5": 0.8929784865690622
+      "R@1": 0.9154302670623146,
+      "R@5": 0.969213649851632,
+      "mAP@5": 0.8818929276752454
     },
     {
       "angle": 60,
-      "R@1": 0.9254451038575667,
-      "R@5": 0.9677299703264095,
-      "mAP@5": 0.8927176061719213
+      "R@1": 0.9146884272997032,
+      "R@5": 0.9703264094955489,
+      "mAP@5": 0.8844522749325289
     },
     {
       "angle": 90,
-      "R@1": 0.9280415430267063,
-      "R@5": 0.969213649851632,
-      "mAP@5": 0.8934161718614201
+      "R@1": 0.9198813056379822,
+      "R@5": 0.9703264094955489,
+      "mAP@5": 0.8830934717178963
     },
     {
       "angle": 120,
-      "R@1": 0.9258160237388724,
-      "R@5": 0.9695845697329377,
-      "mAP@5": 0.8909038079808569
+      "R@1": 0.9191394658753709,
+      "R@5": 0.9706973293768546,
+      "mAP@5": 0.8826458949418822
     },
     {
       "angle": 150,
-      "R@1": 0.9235905044510386,
-      "R@5": 0.969213649851632,
-      "mAP@5": 0.8910323935442047
+      "R@1": 0.9132047477744807,
+      "R@5": 0.9721810089020771,
+      "mAP@5": 0.8821476261233718
     },
     {
       "angle": 180,
-      "R@1": 0.9272997032640949,
-      "R@5": 0.9706973293768546,
-      "mAP@5": 0.8932220572976048
+      "R@1": 0.918026706231454,
+      "R@5": 0.9703264094955489,
+      "mAP@5": 0.8820412956100809
     }
   ],
   "standard_retrieval": {
-    "R@1": 0.9387982195845698,
-    "R@5": 1.0,
-    "mAP@5": 0.95888724044098
+    "R@1": 0.5318991097922848,
+    "R@5": 0.8112017804154302,
+    "mAP@5": 0.4041097909599012
   },
   "part_query_results": [
     {
@@ -84,16 +84,16 @@
         "table"
       ],
       "top_classes": [
-        "chair",
-        "motorbike",
-        "table",
+        "bag",
         "chair",
         "chair",
+        "earphone",
         "chair",
         "chair",
         "chair",
-        "airplane",
-        "table"
+        "chair",
+        "chair",
+        "chair"
       ],
       "part_hit_rate": 0.8,
       "class_hit_rate": 0.8
@@ -107,19 +107,19 @@
         "airplane"
       ],
       "top_classes": [
+        "chair",
+        "chair",
+        "airplane",
+        "bag",
         "airplane",
         "airplane",
+        "chair",
         "airplane",
-        "airplane",
-        "airplane",
-        "airplane",
-        "airplane",
-        "airplane",
-        "table",
+        "laptop",
         "airplane"
       ],
-      "part_hit_rate": 0.9,
-      "class_hit_rate": 0.9
+      "part_hit_rate": 0.5,
+      "class_hit_rate": 0.5
     },
     {
       "query": "an object with wheels",
@@ -127,24 +127,24 @@
         "wheel"
       ],
       "expected_classes": [
-        "motorbike",
         "car",
+        "motorbike",
         "skateboard"
       ],
       "top_classes": [
-        "motorbike",
+        "chair",
+        "chair",
         "car",
-        "motorbike",
-        "pistol",
-        "pistol",
-        "motorbike",
-        "motorbike",
-        "skateboard",
-        "pistol",
-        "skateboard"
+        "car",
+        "chair",
+        "car",
+        "car",
+        "car",
+        "table",
+        "table"
       ],
-      "part_hit_rate": 0.7,
-      "class_hit_rate": 0.7
+      "part_hit_rate": 0.5,
+      "class_hit_rate": 0.5
     },
     {
       "query": "something with a handle",
@@ -153,25 +153,25 @@
       ],
       "expected_classes": [
         "bag",
-        "knife",
-        "pistol",
         "motorbike",
-        "mug"
+        "mug",
+        "pistol",
+        "knife"
       ],
       "top_classes": [
-        "knife",
+        "bag",
+        "lamp",
+        "lamp",
+        "bag",
+        "lamp",
+        "lamp",
         "pistol",
-        "pistol",
-        "pistol",
-        "knife",
-        "pistol",
-        "pistol",
-        "pistol",
-        "knife",
-        "motorbike"
+        "chair",
+        "airplane",
+        "airplane"
       ],
-      "part_hit_rate": 1.0,
-      "class_hit_rate": 1.0
+      "part_hit_rate": 0.3,
+      "class_hit_rate": 0.3
     },
     {
       "query": "a shape with an engine",
@@ -179,23 +179,23 @@
         "engine"
       ],
       "expected_classes": [
-        "motorbike",
-        "airplane"
+        "airplane",
+        "motorbike"
       ],
       "top_classes": [
+        "chair",
+        "chair",
         "table",
-        "table",
-        "pistol",
-        "rocket",
-        "car",
-        "rocket",
-        "motorbike",
-        "motorbike",
-        "airplane",
-        "table"
+        "lamp",
+        "lamp",
+        "lamp",
+        "lamp",
+        "bag",
+        "lamp",
+        "chair"
       ],
-      "part_hit_rate": 0.3,
-      "class_hit_rate": 0.3
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
     },
     {
       "query": "something with a blade",
@@ -206,19 +206,19 @@
         "knife"
       ],
       "top_classes": [
-        "guitar",
-        "guitar",
-        "knife",
-        "knife",
-        "knife",
-        "knife",
-        "knife",
-        "knife",
-        "knife",
-        "knife"
+        "bag",
+        "bag",
+        "table",
+        "pistol",
+        "table",
+        "airplane",
+        "airplane",
+        "airplane",
+        "lamp",
+        "airplane"
       ],
-      "part_hit_rate": 0.8,
-      "class_hit_rate": 0.8
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
     },
     {
       "query": "an object with fins",
@@ -229,43 +229,43 @@
         "rocket"
       ],
       "top_classes": [
-        "airplane",
-        "rocket",
-        "knife",
+        "bag",
         "lamp",
-        "lamp",
-        "rocket",
-        "lamp",
-        "rocket",
-        "lamp",
+        "chair",
+        "bag",
+        "chair",
+        "table",
+        "laptop",
+        "chair",
+        "chair",
         "lamp"
       ],
-      "part_hit_rate": 0.3,
-      "class_hit_rate": 0.3
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
     },
     {
       "query": "a shape with a back and a seat",
       "part_names": [
-        "seat",
-        "back"
+        "back",
+        "seat"
       ],
       "expected_classes": [
         "chair"
       ],
       "top_classes": [
-        "laptop",
-        "chair",
-        "cap",
-        "chair",
-        "chair",
-        "table",
         "chair",
         "chair",
         "chair",
-        "lamp"
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "chair"
       ],
-      "part_hit_rate": 0.6,
-      "class_hit_rate": 0.6
+      "part_hit_rate": 1.0,
+      "class_hit_rate": 1.0
     },
     {
       "query": "something with a top and legs",
@@ -278,18 +278,18 @@
       ],
       "top_classes": [
         "table",
-        "table",
-        "lamp",
-        "car",
-        "car",
-        "motorbike",
-        "table",
-        "car",
-        "car",
-        "pistol"
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "chair",
+        "earphone",
+        "earphone"
       ],
-      "part_hit_rate": 0.2,
-      "class_hit_rate": 0.3
+      "part_hit_rate": 0.1,
+      "class_hit_rate": 0.1
     },
     {
       "query": "an object with a barrel",
@@ -300,19 +300,19 @@
         "pistol"
       ],
       "top_classes": [
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol",
-        "pistol"
+        "bag",
+        "bag",
+        "chair",
+        "chair",
+        "chair",
+        "bag",
+        "airplane",
+        "table",
+        "lamp",
+        "chair"
       ],
-      "part_hit_rate": 1.0,
-      "class_hit_rate": 1.0
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
     },
     {
       "query": "a shape with a neck",
@@ -323,19 +323,19 @@
         "guitar"
       ],
       "top_classes": [
+        "chair",
+        "laptop",
+        "table",
+        "bag",
+        "chair",
+        "mug",
+        "chair",
+        "chair",
         "lamp",
-        "guitar",
-        "knife",
-        "knife",
-        "guitar",
-        "lamp",
-        "guitar",
-        "guitar",
-        "guitar",
-        "knife"
+        "chair"
       ],
-      "part_hit_rate": 0.5,
-      "class_hit_rate": 0.5
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
     },
     {
       "query": "something with a deck",
@@ -346,130 +346,25 @@
         "skateboard"
       ],
       "top_classes": [
-        "skateboard",
-        "skateboard",
-        "skateboard",
+        "guitar",
         "pistol",
-        "skateboard",
-        "skateboard",
-        "skateboard",
-        "skateboard",
-        "skateboard",
-        "skateboard"
+        "guitar",
+        "guitar",
+        "pistol",
+        "guitar",
+        "pistol",
+        "guitar",
+        "pistol",
+        "guitar"
       ],
-      "part_hit_rate": 0.9,
-      "class_hit_rate": 0.9
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
     }
   ],
   "cross_class_summary": {
-    "mean_part_hit@10": 0.6666666666666666,
-    "mean_class_hit@10": 0.6749999999999999
+    "mean_part_hit@10": 0.26666666666666666,
+    "mean_class_hit@10": 0.26666666666666666
   },
-  "train_loss_history": {
-    "train": [
-      1.9367094894959813,
-      1.732123549850214,
-      1.6770122590519132,
-      1.6486142518974485,
-      1.6218058697524524,
-      1.6050206774047442,
-      1.580065582834539,
-      1.5654332655526342,
-      1.5513736584356852,
-      1.5376192913168953,
-      1.5360581594563665,
-      1.5167676547453517,
-      1.5209031633677936,
-      1.4982742521734465,
-      1.4924060386561213,
-      1.4901090033707165,
-      1.4741240995270866,
-      1.471548321346442,
-      1.4526687945638384,
-      1.4513452587028344,
-      1.440877037388938,
-      1.434003542931307,
-      1.4290263769882066,
-      1.4279300684020633,
-      1.4090088854233425,
-      1.4040544692959105,
-      1.4011797044603598,
-      1.3913524335338956,
-      1.3930540663145838,
-      1.3805339680541129,
-      1.3763052867282004,
-      1.37169334931033,
-      1.3649308770185424,
-      1.354221655144578,
-      1.352033190251816,
-      1.342113238005411,
-      1.3469825688572157,
-      1.3377090467228776,
-      1.339648908270257,
-      1.3388259178470998,
-      1.3281973772460507,
-      1.3230053842777298,
-      1.3185175036390622,
-      1.3271185095821108,
-      1.3182711782199996,
-      1.3142252218510424,
-      1.3228300458618574,
-      1.320326599159411,
-      1.306671623495363,
-      1.3157782712507815
-    ],
-    "val": [
-      1.7583928599077112,
-      1.7068519452038933,
-      1.6755410566049465,
-      1.647054087414461,
-      1.646989046124851,
-      1.6459872049443862,
-      1.624637989436879,
-      1.6103028591941384,
-      1.5892581659204819,
-      1.596415517610662,
-      1.582458258376402,
-      1.5795220992144416,
-      1.5654483185094945,
-      1.57683864551432,
-      1.5677283911144033,
-      1.5561725518282723,
-      1.562176843250499,
-      1.55243320219657,
-      1.5403573583154118,
-      1.5447760960635017,
-      1.5444189345135408,
-      1.5397472563911887,
-      1.535726840355817,
-      1.5328066948582144,
-      1.5370283631717458,
-      1.5226479186731225,
-      1.5294330190209782,
-      1.527165805942872,
-      1.5312034533304326,
-      1.5179448934162365,
-      1.5223610506338232,
-      1.5280634248957914,
-      1.5164406580083511,
-      1.51822832717615,
-      1.5157385647296906,
-      1.512016249404234,
-      1.5207745509989121,
-      1.5140008800170002,
-      1.515690499193528,
-      1.5153066333602456,
-      1.513172297267353,
-      1.514822877855862,
-      1.511247742877287,
-      1.5102059160961825,
-      1.5137387065326466,
-      1.513357382662156,
-      1.5122085452079772,
-      1.5106817343655754,
-      1.5097819556208218,
-      1.5121431743397433
-    ]
-  },
-  "timestamp": "20261016_122824"
+  "train_loss_history": [],
+  "timestamp": "20261023_092120"
 }

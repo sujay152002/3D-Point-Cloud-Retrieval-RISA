@@ -396,6 +396,8 @@ class ScanObjectNNDataset(Dataset):
 # ============================================================================
 
 class PartNetDataset(Dataset):
+    # Default category list — used when the npz does not contain a 'categories' key.
+    # Labels 0–9 correspond to these names in the standard PartNet benchmark split.
     CATEGORIES = ['Chair', 'Table', 'Lamp', 'Vase', 'StorageFurniture',
                   'Bed', 'Guitar', 'Motorcycle', 'Airplane', 'Bicycle']
 
@@ -406,34 +408,74 @@ class PartNetDataset(Dataset):
         self.num_points = num_points
         self.normalize  = normalize
         self.category   = category
+        self.augment    = (split == 'train')
 
+        # PartNet often only ships a test npz (no separate train/val files).
+        # If the requested split file is absent but the test file exists, load
+        # the test file and let get_dataset() carve train/val via Subset.
         data_path = self.root / f'partnet_{split}.npz'
+        fallback_path = self.root / 'partnet_test.npz'
         if not data_path.exists():
-            raise FileNotFoundError(
-                f"PartNet {split} data not found at {data_path}. "
-                f"Please download from: https://partnet.cs.stanford.edu/"
-            )
+            if fallback_path.exists() and split in ('train', 'val'):
+                # Silently fall back — get_dataset already handles the Subset carving
+                data_path = fallback_path
+            else:
+                raise FileNotFoundError(
+                    f"PartNet {split} data not found at {data_path}. "
+                    f"Please download from: https://partnet.cs.stanford.edu/"
+                )
 
         data = np.load(data_path, allow_pickle=True)
-        self.points      = data['points']
-        self.labels      = data['labels']
-        self.part_labels = data.get('part_labels', np.zeros_like(data['labels']))
-        self.categories  = {i: cat for i, cat in enumerate(self.CATEGORIES)}
+        self.points = data['points']                          # [N, P, 3]
 
-        print(f"✓ Loaded PartNet {split}: {len(self)} samples")
+        # Labels — copy so Subset carving on top of a memory-mapped array is safe
+        self.labels = data['labels'].astype(np.int64).copy()
+
+        # Part labels — cast float64 → int32 if necessary (PartNet npz quirk)
+        if 'part_labels' in data:
+            pl = data['part_labels']
+            self.part_labels = pl.astype(np.int32).copy()    # [N, P]
+        else:
+            # Fallback: zero part labels so downstream code doesn't crash
+            self.part_labels = np.zeros(
+                (len(self.points), self.points.shape[1]), dtype=np.int32
+            )
+
+        # Categories — prefer the npz-embedded dict; fall back to the class default
+        if 'categories' in data:
+            self.categories = data['categories'].item()
+        else:
+            n_classes = int(self.labels.max()) + 1
+            self.categories = {
+                i: self.CATEGORIES[i] if i < len(self.CATEGORIES) else f'class{i}'
+                for i in range(n_classes)
+            }
+
+        # Pre-sample fixed indices for val/test (deterministic evaluation)
+        if not self.augment:
+            rng = np.random.default_rng(0)
+            self._fixed_choice = [
+                rng.choice(len(p), self.num_points, replace=len(p) < self.num_points)
+                for p in self.points
+            ]
+
+        print(f"✓ Loaded PartNet {split} (from {data_path.name}): "
+              f"{len(self)} samples, {len(self.categories)} categories, "
+              f"{len(np.unique(self.part_labels))} part ids")
 
     def __len__(self):
         return len(self.points)
 
     def __getitem__(self, idx):
         points     = self.points[idx].copy()
-        label      = self.labels[idx]
+        label      = int(self.labels[idx])
         part_label = self.part_labels[idx]
 
-        if len(points) >= self.num_points:
-            choice = np.random.choice(len(points), self.num_points, replace=False)
+        if self.augment:
+            choice = np.random.choice(len(points), self.num_points,
+                                      replace=len(points) < self.num_points)
         else:
-            choice = np.random.choice(len(points), self.num_points, replace=True)
+            choice = self._fixed_choice[idx]
         points     = points[choice]
         part_label = part_label[choice]
 
@@ -445,7 +487,7 @@ class PartNetDataset(Dataset):
 
         return (torch.from_numpy(points).float().permute(1, 0),
                 torch.tensor(label, dtype=torch.long),
-                torch.from_numpy(part_label).long())
+                torch.from_numpy(part_label.astype(np.int32)).long())
 
 
 # ============================================================================
@@ -721,6 +763,21 @@ def get_dataset(name, split='train', root='data', num_points=1024, download=Fals
             val_start = int(n * 0.80)
             from torch.utils.data import Subset
             return Subset(base_ds, indices[val_start:])
+        # PartNet: no separate train npz — carve val from the test npz (70/15/15 split)
+        if name.lower() == 'partnet':
+            base_ds = PartNetDataset(
+                root=Path(root) / 'partnet',
+                split='train',   # PartNetDataset will fall back to test npz
+                num_points=num_points,
+                download=download,
+                **kwargs
+            )
+            n = len(base_ds)
+            indices   = torch.randperm(n, generator=torch.Generator().manual_seed(42)).tolist()
+            val_start = int(n * 0.70)
+            val_end   = int(n * 0.85)
+            from torch.utils.data import Subset
+            return Subset(base_ds, indices[val_start:val_end])
         base_ds = registry[name.lower()](
             root=Path(root) / name.lower(),
             split='train',
@@ -763,6 +820,20 @@ def get_dataset(name, split='train', root='data', num_points=1024, download=Fals
             train_end = int(n * 0.80)
             from torch.utils.data import Subset
             return Subset(base_ds, indices[:train_end])
+        # PartNet: no separate train npz — carve train from the test npz (70/15/15 split)
+        if name.lower() == 'partnet':
+            base_ds = PartNetDataset(
+                root=Path(root) / 'partnet',
+                split='train',   # PartNetDataset will fall back to test npz
+                num_points=num_points,
+                download=download,
+                **kwargs
+            )
+            n = len(base_ds)
+            indices   = torch.randperm(n, generator=torch.Generator().manual_seed(42)).tolist()
+            train_end = int(n * 0.70)
+            from torch.utils.data import Subset
+            return Subset(base_ds, indices[:train_end])
         base_ds = registry[name.lower()](
             root=Path(root) / name.lower(),
             split='train',
@@ -777,12 +848,19 @@ def get_dataset(name, split='train', root='data', num_points=1024, download=Fals
         return Subset(base_ds, indices[:train_end])
 
     # split == 'test': use the held-out test npz as-is
-    return registry[name.lower()](
+    # Not all dataset classes accept 'download' (e.g. ObjaverseDataset) —
+    # only pass it if the constructor has a 'download' parameter.
+    import inspect
+    cls = registry[name.lower()]
+    sig_params = inspect.signature(cls.__init__).parameters
+    ctor_kwargs = dict(kwargs)
+    if 'download' in sig_params:
+        ctor_kwargs['download'] = download
+    return cls(
         root=Path(root) / name.lower(),
         split='test',
         num_points=num_points,
-        download=download,
-        **kwargs
+        **ctor_kwargs,
     )
 
 

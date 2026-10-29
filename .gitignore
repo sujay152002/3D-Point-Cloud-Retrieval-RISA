@@ -1,5 +1,6 @@
 data/
 outputs/*.npz
+outputs/*.log
 outputs/checkpoints/
 outputs/imagebind_cache/
 outputs/text_cache/

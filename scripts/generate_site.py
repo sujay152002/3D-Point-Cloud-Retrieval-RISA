@@ -705,7 +705,33 @@ def build_exp8(data):
     )
 
 
+def parse_exp10_log(log_path: Path):
+    """Parse exp10_all_priors.log into the same dict format as the JSON."""
+    import re
+    if not log_path.exists():
+        return None
+    data = {}
+    current = None
+    for line in log_path.read_text().splitlines():
+        m = re.match(r"Prior: (\S+)", line.strip())
+        if m:
+            current = m.group(1)
+            data[current] = []
+            continue
+        m = re.match(r"θ=\s*([\d.]+)°\s+R@1=([\d.]+)\s+R@5=([\d.]+)\s+mAP@5=([\d.]+)", line.strip())
+        if m and current:
+            data[current].append({
+                "angle": float(m.group(1)),
+                "r1":    float(m.group(2)),
+                "r5":    float(m.group(3)),
+                "map5":  float(m.group(4)),
+            })
+    return data if data else None
+
+
 def build_exp10(data):
+    if not data:
+        data = parse_exp10_log(OUTPUTS / "exp10_all_priors.log")
     if not data:
         tbl = "<p class='pending'>Exp 10 still running — rerun update_site.sh when complete.</p>"
         return dict(
@@ -740,6 +766,8 @@ def build_exp10(data):
                                "FPS centroids aggregate their local neighborhood via max-pool before attention. Lossless compression: each token summarises N/K points."),
         "knn_dist_entropy_K": ("k-NN Distance Entropy",
                                "Selects points with highest entropy in their k-NN distance distribution (using actual distances). Targets points with geometrically diverse neighborhoods — maximally informative for the neighbor-distance MLP."),
+        "gumbel_K":           ("Gumbel-Softmax Learned Selector",
+                               "Differentiable top-K selection via Gumbel-softmax straight-through. Scorer pretrained on eigenentropy targets then fine-tuned end-to-end with proxy-anchor loss."),
     }
     prior_desc = {k: v[0] for k, v in prior_meta.items()}
     rows = []
@@ -760,7 +788,7 @@ def build_exp10(data):
     prior_colors = {
         p: COLORS[i % len(COLORS)] for i, p in enumerate(
             ["full_N","random_K","fps_K","eigenentropy_K","surface_var_K",
-             "curvature_K","salient_K","aggregate_K","knn_dist_entropy_K"]
+             "curvature_K","salient_K","aggregate_K","knn_dist_entropy_K","gumbel_K"]
         )
     }
     legend_cards = "".join(
@@ -904,6 +932,119 @@ def build_exp11(data):
             **{"IB Dim": "1024"},
         ),
         table=chart11 + loss_chart + modal_tbl + rot_tbl,
+        ai=ai,
+    )
+
+
+def build_exp11b(data):
+    """Exp 11b — ImageBind retrieval with multi-template text queries and dual-loss training."""
+    if not data:
+        tbl = "<p class='pending'>Exp 11b still running — rerun update_site.sh when complete.</p>"
+        return dict(
+            id="exp11b", title="Exp 11b — ImageBind Multi-Template Retrieval",
+            question="Does multi-template text-query averaging and text-loss weighting (λ=2.0) improve open-vocabulary 3D retrieval?",
+            info=info_grid(
+                Model=tag_list(["RISA + ProjectionMLP"]),
+                Dataset=tag_list(["ShapeNet"]),
+                Metric="R@1 · R@5 · mAP@5",
+                Prior=tag_list([data["config"]["prior"]]) if data and "config" in data else "",
+            ),
+            table=tbl, ai="<em>Results pending.</em>",
+        )
+
+    cfg = data.get("config", {})
+    rot = data.get("rotation_retrieval", [])
+    t2s_per = data.get("text_to_shape_per_template", [])
+    t2s_avg = data.get("text_to_shape_avg_template", {})
+    i2s = data.get("image_to_shape", {})
+
+    # ── Rotation robustness table ─────────────────────────────────────────────
+    rot_rows = [
+        td_row(
+            f"{int(r['angle'])}°",
+            fmt(r.get("R@1")), fmt(r.get("R@5")), fmt(r.get("mAP@5")),
+        )
+        for r in rot
+    ]
+    rot_tbl = make_table(
+        th("Angle", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+        rot_rows, "Shape-to-shape retrieval under SO(3) rotation — ShapeNet"
+    )
+
+    # ── Cross-modal summary table ─────────────────────────────────────────────
+    ka = {r["angle"]: r for r in rot}
+    modal_rows = [
+        td_row("shape → shape (0°)", fmt(ka.get(0, {}).get("R@1")), fmt(ka.get(0, {}).get("R@5")), fmt(ka.get(0, {}).get("mAP@5"))),
+        td_row("image → shape",      fmt(i2s.get("R@1")),           fmt(i2s.get("R@5")),           fmt(i2s.get("mAP@5"))),
+        td_row("text → shape (avg)", fmt(t2s_avg.get("R@1")),      fmt(t2s_avg.get("R@5")),      fmt(t2s_avg.get("mAP@5"))),
+    ]
+    modal_tbl = make_table(
+        th("Query Modality", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+        modal_rows, "Cross-modal retrieval — ShapeNet (10 templates averaged)"
+    )
+
+    # ── Per-template text retrieval table ──────────────────────────────────────
+    tpl_rows = [
+        td_row(
+            t.get("template", "?"),
+            fmt(t.get("R@1")), fmt(t.get("R@5")), fmt(t.get("mAP@5")),
+        )
+        for t in t2s_per
+    ]
+    tpl_tbl = make_table(
+        th("Template", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+        tpl_rows, "Text → shape retrieval per prompt template — ShapeNet"
+    )
+
+    # ── Rotation line chart ───────────────────────────────────────────────────
+    series = [("shape→shape", COLORS[0], [(r["angle"], r["R@1"]) for r in rot])]
+    chart = line_chart(series, title="R@1 (%) vs rotation angle — shape-to-shape")
+
+    # ── Loss curve ────────────────────────────────────────────────────────────
+    history = data.get("train_loss_history", [])
+    if history:
+        loss_pts = [(i + 1, v) for i, v in enumerate(history)]
+        loss_series = [("InfoNCE loss", COLORS[1], loss_pts)]
+        loss_chart = line_chart(loss_series, title="Projection MLP training loss")
+    else:
+        loss_chart = ""
+
+    summary = (
+        f"prior={cfg.get('prior')}, K={cfg.get('K')}, text_lambda={cfg.get('text_lambda')}, "
+        f"n_views={cfg.get('n_views')}, epochs={cfg.get('epochs')}, dataset={cfg.get('dataset')}\n"
+        f"shape→shape R@1={fmt(ka.get(0,{}).get('R@1'))}%, R@5={fmt(ka.get(0,{}).get('R@5'))}%, mAP@5={fmt(ka.get(0,{}).get('mAP@5'))}%\n"
+        f"image→shape R@1={fmt(i2s.get('R@1'))}%, R@5={fmt(i2s.get('R@5'))}%, mAP@5={fmt(i2s.get('mAP@5'))}%\n"
+        f"text→shape(avg) R@1={fmt(t2s_avg.get('R@1'))}%, R@5={fmt(t2s_avg.get('R@5'))}%, mAP@5={fmt(t2s_avg.get('mAP@5'))}%\n"
+        f"per-template mAP@5 range: {fmt(min(t.get('mAP@5',0) for t in t2s_per))}%–{fmt(max(t.get('mAP@5',0) for t in t2s_per))}%\n"
+        f"rotation variance R@1: min={fmt(min(r['R@1'] for r in rot))}% max={fmt(max(r['R@1'] for r in rot))}%"
+    )
+    ai = ask_llm(
+        "You are a researcher analyzing open-vocabulary 3D shape retrieval results. "
+        "The system uses a rotation-invariant RISA encoder projected into ImageBind's multimodal embedding space via a small MLP. "
+        "This experiment uses 10 text prompt templates per class and a text-loss weight (lambda=2.0) to improve text-to-shape retrieval. "
+        f"Results:\n{summary}\n"
+        "Write 5-6 sentences covering: "
+        "(1) whether multi-template averaging produces robust text-to-shape retrieval across all 10 templates, "
+        "(2) whether text_lambda=2.0 narrows the gap between text-to-shape and image-to-shape performance compared to a text-loss-free baseline, "
+        "(3) the near-perfect text-to-shape R@1 — what it means about the quality of the 3D-text alignment, "
+        "(4) whether rotation invariance holds across all 9 angles and what the tiny variance implies, "
+        "(5) which template phrasing performs best/worst and what that reveals about ImageBind's text embedding sensitivity."
+    )
+    return dict(
+        id="exp11b", title="Exp 11b — ImageBind Multi-Template Retrieval",
+        question="Does multi-template text-query averaging and text-loss weighting (λ=2.0) improve open-vocabulary 3D retrieval?",
+        info=info_grid(
+            Model=tag_list(["RISA + ProjectionMLP"]),
+            Dataset=tag_list(["ShapeNet"]),
+            Prior=tag_list([cfg.get("prior", "?")]),
+            Metric="R@1 · R@5 · mAP@5",
+            **{"Proj Epochs": str(cfg.get("epochs", "?"))},
+            **{"Text λ": str(cfg.get("text_lambda", "?"))},
+            **{"IB Dim": "1024"},
+            **{"Templates": str(len(t2s_per))},
+            **{"N Views": str(cfg.get("n_views", "?"))},
+        ),
+        table=chart + loss_chart + modal_tbl + tpl_tbl + rot_tbl,
         ai=ai,
     )
 
@@ -1306,6 +1447,8 @@ EXP_OVERVIEW = [
      "9 priors on ModelNet40: full_N, random_K, fps_K, eigenentropy_K, surface_var_K, curvature_K, salient_K, aggregate_K, knn_dist_entropy_K."),
     ("Exp 11", "ImageBind Open-Vocabulary Retrieval", "Can rotation-invariant 3D embeddings align with ImageBind's multimodal space for text and image queries?",
      "Projects RISA embeddings into ImageBind space via a small MLP. Evaluates shape-to-shape, image-to-shape, and zero-shot text-to-shape retrieval on ShapeNet."),
+    ("Exp 11b","ImageBind Multi-Template Retrieval", "Does multi-template text-query averaging and text-loss weighting (λ=2.0) improve open-vocabulary 3D retrieval?",
+     "Same ImageBind projection as Exp 11, but evaluates 10 text prompt templates per class and uses text-loss weight λ=2.0 with n_views=4 augmented views."),
 ]
 
 def build_overview():
@@ -1322,7 +1465,7 @@ def build_overview():
     # stat cards with animated counters
     stats = [
         ("93.7%", "RISA mAP@5", "Part Retrieval"),
-        ("7", "Experiments", "Across 3 datasets"),
+        ("8", "Experiments", "Across 3 datasets"),
         ("4", "Baselines", "SOTA comparisons"),
         ("19", "Rotation Angles", "0° → 180° SO(3)"),
     ]
@@ -1418,7 +1561,7 @@ def build_html(experiments):
         f'<p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p>'
         f'<div class="badges">'
         f'<span class="badge">📅 {ts}</span>'
-        f'<span class="badge">🔬 7 Experiments</span>'
+        f'<span class="badge">🔬 8 Experiments</span>'
         f'<span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span>'
         f'<span class="badge">⚡ SO(3) Invariant</span>'
         f'</div></header>'
@@ -1452,7 +1595,8 @@ def main():
         ("exp4",  lambda: build_exp4(load("exp4_risa_old_100ep.json"), load("exp4_risa_perceiver_100ep.json"))),
         ("exp8",  lambda: build_exp8(load("exp8_part_retrieval.json"))),
         ("exp10", lambda: build_exp10(load("exp10_prior_selection.json"))),
-        ("exp11", lambda: build_exp11(load("exp11_imagebind_retrieval.json"))),
+        ("exp11",  lambda: build_exp11(load("exp11_imagebind_retrieval.json"))),
+        ("exp11b", lambda: build_exp11b(load("exp11b_imagebind_retrieval.json"))),
     ]
 
     if args.only:

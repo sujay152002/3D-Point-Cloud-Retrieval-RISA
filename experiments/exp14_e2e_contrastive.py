@@ -122,17 +122,91 @@ def encode_texts(texts: list, st_model, batch_size: int = 512) -> torch.Tensor:
     return torch.cat(all_embs, dim=0)
 
 
-# ── Text embedding cache ──────────────────────────────────────────────────────
+# ── Text embedding cache (multi-view) ─────────────────────────────────────────
+
+def _generate_text_views(text: str, rng: random.Random) -> list[str]:
+    """Generate multiple text views from a single Objaverse text string.
+
+    Each view uses a different combination of the original fields (name,
+    tags, description) to create semantically distinct embeddings. This
+    prevents the model from memorising a single fixed text target per shape.
+
+    Views:
+      0: Full text (original — all fields joined)
+      1: Name only (first sentence before '. ')
+      2: Tags only (sentences that look like comma-separated tags)
+      3: Description only (longest sentence)
+      4: Name + tags (drop description)
+      5: Name + description (drop tags)
+      6: Shuffled tag order (if multiple tags present)
+      7: Random tag subset (drop 1-2 tags)
+    """
+    if not text or text == "3D object":
+        return [text] * 8
+
+    # Split into sentences by '. ' — the download script joins fields with '. '
+    sentences = [s.strip() for s in text.split('. ') if s.strip()]
+    # Re-add trailing period for consistency
+    sentences = [s if s.endswith('.') else s + '.' for s in sentences]
+
+    if len(sentences) <= 1:
+        # Not enough structure to split — return minor variations
+        return [text] * 8
+
+    name      = sentences[0] if sentences else text
+    remaining = sentences[1:] if len(sentences) > 1 else []
+
+    # Heuristic: tags are short comma-separated lists, description is longer
+    tags_candidates  = [s for s in remaining if len(s.split(',')) >= 2 and len(s) < 100]
+    desc_candidates = [s for s in remaining if s not in tags_candidates]
+    tags  = '. '.join(tags_candidates)
+    desc  = '. '.join(desc_candidates)
+    full  = text
+
+    # Build views
+    views = [
+        full,                              # 0: full
+        name,                              # 1: name only
+        tags if tags else full,            # 2: tags only
+        desc if desc else full,            # 3: description only
+        '. '.join([name, tags]) if tags else full,    # 4: name + tags
+        '. '.join([name, desc]) if desc else full,    # 5: name + description
+    ]
+
+    # 6: Shuffled tag order
+    if tags_candidates:
+        shuffled = tags_candidates.copy()
+        rng.shuffle(shuffled)
+        views.append('. '.join(shuffled))
+    else:
+        views.append(full)
+
+    # 7: Random tag subset (drop 1-2 tags)
+    if len(tags_candidates) >= 2:
+        n_drop = rng.randint(1, min(2, len(tags_candidates) - 1))
+        subset = tags_candidates.copy()
+        rng.shuffle(subset)
+        subset = subset[:-n_drop] if n_drop > 0 else subset
+        views.append('. '.join(subset))
+    else:
+        views.append(full)
+
+    return views
+
 
 def build_text_cache(dataset, st_model, cache_path: Path,
-                     split_name: str = "train") -> torch.Tensor:
+                     split_name: str = "train",
+                     multi_view: bool = False) -> torch.Tensor:
     """Pre-compute and cache text embeddings for all shapes in dataset.
 
     Handles both plain datasets and torch.utils.data.Subset: always returns
     a tensor aligned to dataset[0..len(dataset)-1].
 
+    When multi_view=True, generates 8 text views per shape and returns
+    [N, n_views, TEXT_DIM]. Each batch samples one random view per shape.
+    When multi_view=False (default), returns [N, TEXT_DIM] as before.
+
     cache_path : if exists and aligned, loaded from disk; otherwise recomputed.
-    Returns [N, TEXT_DIM] L2-normalised float32 tensor on CPU.
     """
     from torch.utils.data import Subset
 
@@ -147,14 +221,32 @@ def build_text_cache(dataset, st_model, cache_path: Path,
 
     if cache_path.exists():
         cached = torch.load(cache_path, map_location="cpu", weights_only=True)
-        if cached.shape[0] == N and cached.shape[1] == TEXT_DIM:
-            print(f"  Loaded text cache ({N} embeddings) ← {cache_path}")
-            return cached
-        print(f"  Cache size mismatch ({cached.shape[0]} vs {N}) — recomputing…")
+        if multi_view:
+            if cached.dim() == 3 and cached.shape[0] == N and cached.shape[2] == TEXT_DIM:
+                print(f"  Loaded text cache ({N} embeddings, {cached.shape[1]} views) ← {cache_path}")
+                return cached
+        else:
+            if cached.dim() == 2 and cached.shape[0] == N and cached.shape[1] == TEXT_DIM:
+                print(f"  Loaded text cache ({N} embeddings) ← {cache_path}")
+                return cached
+        print(f"  Cache size mismatch — recomputing…")
 
-    texts = [raw_ds[i][2] for i in indices]   # index 2 is the text string
-    print(f"  Encoding {N} texts for {split_name} split…")
-    embs = encode_texts(texts, st_model)       # [N, TEXT_DIM]
+    if multi_view:
+        rng = random.Random(42)   # deterministic view generation
+        all_texts = []
+        for i in indices:
+            text = raw_ds[i][2]
+            views = _generate_text_views(text, rng)
+            all_texts.extend(views)   # [N * 8]
+
+        print(f"  Encoding {N} texts × 8 views for {split_name} split…")
+        embs = encode_texts(all_texts, st_model)            # [N * 8, TEXT_DIM]
+        embs = embs.view(N, 8, TEXT_DIM)                    # [N, 8, TEXT_DIM]
+    else:
+        texts = [raw_ds[i][2] for i in indices]
+        print(f"  Encoding {N} texts for {split_name} split…")
+        embs = encode_texts(texts, st_model)                # [N, TEXT_DIM]
+
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(embs, cache_path)
     print(f"  Text cache saved → {cache_path}")
@@ -170,12 +262,14 @@ class ProjectionMLP(nn.Module):
     regardless of encoding_out_dim setting.
     """
 
-    def __init__(self, in_dim: int, hidden_dim: int = 1024, out_dim: int = TEXT_DIM):
+    def __init__(self, in_dim: int, hidden_dim: int = 1024, out_dim: int = TEXT_DIM,
+                 dropout: float = 0.1):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden_dim),
             nn.GELU(),
             nn.LayerNorm(hidden_dim),
+            nn.Dropout(dropout),
             nn.Linear(hidden_dim, out_dim),
         )
 
@@ -188,22 +282,25 @@ class ProjectionMLP(nn.Module):
 class InfoNCELoss(nn.Module):
     """Symmetric InfoNCE with a learnable log-inverse-temperature parameter.
 
-    CLIP convention: log_inv_temp = log(1/T), clamped to T ∈ [0.01, 100].
+    CLIP convention: log_inv_temp = log(1/T), clamped to T ∈ [temp_floor, 100].
+    The temp_floor (default 0.03) prevents the temperature from collapsing
+    too low, which sharpens logits and accelerates memorisation / overfitting.
     """
 
-    def __init__(self, init_temp: float = 0.07):
+    def __init__(self, init_temp: float = 0.07, temp_floor: float = 0.03):
         super().__init__()
+        self.temp_floor = temp_floor
         self.log_inv_temp = nn.Parameter(torch.tensor(np.log(1.0 / init_temp)))
 
     @property
     def temperature(self) -> float:
         return 1.0 / self.log_inv_temp.clamp(
-            min=np.log(0.01), max=np.log(100.0)
+            min=np.log(1.0 / 100.0), max=np.log(1.0 / self.temp_floor)
         ).exp().item()
 
     def forward(self, z_a: torch.Tensor, z_b: torch.Tensor) -> torch.Tensor:
         inv_temp = self.log_inv_temp.clamp(
-            min=np.log(0.01), max=np.log(100.0)
+            min=np.log(1.0 / 100.0), max=np.log(1.0 / self.temp_floor)
         ).exp()
         logits  = (z_a @ z_b.T) * inv_temp
         labels  = torch.arange(logits.size(0), device=logits.device)
@@ -280,23 +377,39 @@ def train(
     criterion,
     train_ds,
     val_ds,
-    train_text_embs: torch.Tensor,   # [N_train, TEXT_DIM]
-    val_text_embs:   torch.Tensor,   # [N_val,   TEXT_DIM]
+    train_text_embs: torch.Tensor,   # [N_train, TEXT_DIM] or [N_train, n_views, TEXT_DIM]
+    val_text_embs:   torch.Tensor,   # [N_val,   TEXT_DIM] or [N_val,   n_views, TEXT_DIM]
     epochs:          int,
     batch_size:      int,
     lr_risa:         float,
     lr_proj:         float,
     ckpt_dir:        Path,
+    patience:        int = 0,        # 0 = no early stopping
+    freeze_encoder:  bool = False,   # if True, encoder is frozen
 ) -> tuple:
     """End-to-end training loop.
 
     Differential learning rates: RISA encoder uses lr_risa, projection +
     temperature use lr_proj.
 
+    When freeze_encoder=True, the encoder is excluded from the optimizer
+    and kept in eval mode throughout training (no dropout/BN updates).
+
+    Supports multi-view text embeddings: if text_embs is 3-D [N, n_views, D],
+    a random view is sampled per shape each batch (text augmentation that
+    prevents memorisation of a single fixed text target).
+
+    If patience > 0, training stops early when val loss hasn't improved for
+    `patience` consecutive epochs.
+
     Returns (train_history, val_history) — lists of per-epoch average losses.
     """
     train_text_embs = train_text_embs.to(DEVICE)
     val_text_embs   = val_text_embs.to(DEVICE)
+
+    # Detect multi-view: 3-D [N, n_views, D]
+    multi_view = train_text_embs.dim() == 3
+    n_views    = train_text_embs.size(1) if multi_view else 1
 
     train_loader = DataLoader(
         _IndexedDataset(train_ds),
@@ -318,12 +431,19 @@ def train(
         collate_fn  = _text_collate_fn,
     )
 
-    # Differential learning rates — encoder gets 10× lower lr than projection
-    opt = optim.AdamW([
-        {"params": encoder.parameters(),   "lr": lr_risa,  "weight_decay": 1e-4},
-        {"params": proj.parameters(),      "lr": lr_proj,  "weight_decay": 1e-4},
-        {"params": criterion.parameters(), "lr": lr_proj,  "weight_decay": 0.0},
-    ])
+    # Build optimizer — exclude encoder if frozen
+    if freeze_encoder:
+        opt = optim.AdamW([
+            {"params": proj.parameters(),      "lr": lr_proj,  "weight_decay": 1e-4},
+            {"params": criterion.parameters(), "lr": lr_proj,  "weight_decay": 0.0},
+        ])
+    else:
+        # Differential learning rates — encoder gets 10× lower lr than projection
+        opt = optim.AdamW([
+            {"params": encoder.parameters(),   "lr": lr_risa,  "weight_decay": 1e-4},
+            {"params": proj.parameters(),      "lr": lr_proj,  "weight_decay": 1e-4},
+            {"params": criterion.parameters(), "lr": lr_proj,  "weight_decay": 0.0},
+        ])
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=epochs, eta_min=1e-7
     )
@@ -331,9 +451,15 @@ def train(
     best_val_loss  = float("inf")
     best_ckpt_path = ckpt_dir / "exp14_fps_K_best.pt"
     train_history, val_history = [], []
+    epochs_since_best = 0
 
     for epoch in range(epochs):
-        encoder.train(); proj.train(); criterion.train()
+        # Keep frozen encoder in eval mode (no dropout/BN updates)
+        if freeze_encoder:
+            encoder.eval()
+        else:
+            encoder.train()
+        proj.train(); criterion.train()
         total_loss, n_batches = 0.0, 0
 
         for pts, _, texts, idxs in train_loader:
@@ -341,7 +467,15 @@ def train(
             if pts.shape[1] != 3:
                 pts = pts.permute(0, 2, 1)
 
-            z_text = train_text_embs[idxs]   # [B, TEXT_DIM] — pre-cached, no grad
+            if multi_view:
+                # Sample one random view per shape each batch
+                views = train_text_embs[idxs]                    # [B, n_views, D]
+                view_idx = torch.randint(0, n_views, (views.size(0),),
+                                          device=DEVICE)          # [B]
+                z_text = views[torch.arange(views.size(0), device=DEVICE),
+                                view_idx]                         # [B, D]
+            else:
+                z_text = train_text_embs[idxs]                    # [B, D]
 
             z_risa, _ = unpack_encoder_output(encoder(pts))
             z_proj    = proj(z_risa)
@@ -350,7 +484,8 @@ def train(
             opt.zero_grad()
             loss.backward()
             # Separate gradient clipping: tighter for encoder, looser for head
-            nn.utils.clip_grad_norm_(encoder.parameters(), 1.0)
+            if not freeze_encoder:
+                nn.utils.clip_grad_norm_(encoder.parameters(), 1.0)
             nn.utils.clip_grad_norm_(proj.parameters(),    5.0)
             opt.step()
 
@@ -361,7 +496,7 @@ def train(
         train_avg = total_loss / max(n_batches, 1)
         train_history.append(train_avg)
 
-        # Validation
+        # Validation — average over all views for stability
         encoder.eval(); proj.eval(); criterion.eval()
         val_loss, val_n = 0.0, 0
         with torch.inference_mode():
@@ -369,10 +504,21 @@ def train(
                 pts = pts.to(DEVICE)
                 if pts.shape[1] != 3:
                     pts = pts.permute(0, 2, 1)
-                z_text = val_text_embs[idxs]
+
                 z_risa, _ = unpack_encoder_output(encoder(pts))
-                val_loss += criterion(proj(z_risa), z_text).item()
-                val_n    += 1
+                z_proj    = proj(z_risa)
+
+                if multi_view:
+                    # Average loss across all views
+                    views = val_text_embs[idxs]      # [B, n_views, D]
+                    v_loss = 0.0
+                    for v in range(n_views):
+                        v_loss += criterion(z_proj, views[:, v, :]).item()
+                    val_loss += v_loss / n_views
+                else:
+                    val_loss += criterion(z_proj, val_text_embs[idxs]).item()
+
+                val_n += 1
         val_avg = val_loss / max(val_n, 1)
         val_history.append(val_avg)
 
@@ -383,14 +529,32 @@ def train(
                 {"encoder": encoder.state_dict(), "proj": proj.state_dict()},
                 best_ckpt_path,
             )
+            epochs_since_best = 0
+        else:
+            epochs_since_best += 1
 
-        print(
-            f"  epoch {epoch+1:3d}/{epochs}  "
-            f"loss={train_avg:.4f}  val={val_avg:.4f}  "
-            f"temp={criterion.temperature:.3f}  "
-            f"lr_risa={opt.param_groups[0]['lr']:.2e}"
-            f"{'  ★' if is_best else ''}"
-        )
+        # Build log line — show lr_risa only when encoder is trained
+        if freeze_encoder:
+            print(
+                f"  epoch {epoch+1:3d}/{epochs}  "
+                f"loss={train_avg:.4f}  val={val_avg:.4f}  "
+                f"temp={criterion.temperature:.3f}  "
+                f"lr_proj={opt.param_groups[0]['lr']:.2e}"
+                f"{'  ★' if is_best else ''}"
+            )
+        else:
+            print(
+                f"  epoch {epoch+1:3d}/{epochs}  "
+                f"loss={train_avg:.4f}  val={val_avg:.4f}  "
+                f"temp={criterion.temperature:.3f}  "
+                f"lr_risa={opt.param_groups[0]['lr']:.2e}"
+                f"{'  ★' if is_best else ''}"
+            )
+
+        # Early stopping
+        if patience > 0 and epochs_since_best >= patience:
+            print(f"  Early stopping: no improvement for {patience} epochs")
+            break
 
     # Restore best
     if best_ckpt_path.exists():
@@ -468,12 +632,24 @@ def main():
     parser.add_argument("--epochs",     type=int,   default=30)
     parser.add_argument("--batch_size", type=int,   default=128,
                         help="Large batches = more negatives per InfoNCE step")
-    parser.add_argument("--lr_risa",    type=float, default=1e-5,
+    parser.add_argument("--lr_risa",    type=float, default=3e-6,
                         help="Learning rate for RISA encoder (unfrozen)")
     parser.add_argument("--lr_proj",    type=float, default=1e-4,
                         help="Learning rate for projection MLP + temperature")
+    parser.add_argument("--patience",   type=int,   default=5,
+                        help="Early stopping patience (0 = disabled)")
+    parser.add_argument("--temp_floor", type=float, default=0.03,
+                        help="Minimum temperature floor for InfoNCE")
+    parser.add_argument("--dropout",    type=float, default=0.1,
+                        help="Dropout rate in projection MLP")
+    parser.add_argument("--multi_view", action="store_true", default=False,
+                        help="Generate 8 text views per shape (anti-overfitting)")
+    parser.add_argument("--freeze_encoder", action="store_true", default=False,
+                        help="Freeze RISA encoder — train only projection MLP (anti-overfitting)")
     parser.add_argument("--risa_ckpt",  type=str,   default=None,
                         help="Warm-start RISA from this checkpoint (optional)")
+    parser.add_argument("--no_warm_start", action="store_true", default=False,
+                        help="Skip auto warm-start from exp10 — train RISA from random init")
     parser.add_argument("--resume",     type=str,   default=None,
                         help="Resume full model from exp14 checkpoint dict")
     parser.add_argument("--dataset",    default="objaverse")
@@ -491,7 +667,8 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Redirect stdout to both terminal and log file
-    log_path = ROOT / "outputs" / "exp14_run.log"
+    tag = "frozen" if args.freeze_encoder else "e2e"
+    log_path = ROOT / "outputs" / f"exp14_{tag}_run_{ts}.log"
     log_f    = open(log_path, "w", buffering=1)
 
     class _Tee:
@@ -513,6 +690,9 @@ def main():
     print(f"  Exp 14 — End-to-End InfoNCE (RISA fps_K + Objaverse)")
     print(f"  K={args.K}  epochs={args.epochs}  batch={args.batch_size}")
     print(f"  lr_risa={args.lr_risa}  lr_proj={args.lr_proj}")
+    print(f"  dropout={args.dropout}  temp_floor={args.temp_floor}  patience={args.patience}")
+    print(f"  multi_view={args.multi_view}")
+    print(f"  freeze_encoder={args.freeze_encoder}")
     print(f"  text encoder: {args.st_model}")
     print(f"  dataset: {args.dataset}")
     print(f"  output: {out_dir}")
@@ -541,6 +721,8 @@ def main():
         state = torch.load(args.risa_ckpt, map_location=DEVICE, weights_only=True)
         encoder.load_state_dict(state, strict=False)
         print(f"  Warm-started RISA from: {args.risa_ckpt}")
+    elif args.no_warm_start:
+        print("  No warm-start requested — training RISA from random init")
     else:
         # Try the standard exp10 fps_K checkpoint as a warm start
         auto_ckpt = ckpt_dir / "exp10_fps_K.pt"
@@ -551,16 +733,24 @@ def main():
         else:
             print("  No RISA checkpoint found — training from random init")
 
-    # All encoder parameters trainable
-    for p in encoder.parameters():
-        p.requires_grad = True
+    # All encoder parameters trainable unless frozen
+    if args.freeze_encoder:
+        for p in encoder.parameters():
+            p.requires_grad = False
+        encoder.eval()
+        print("  Encoder frozen — training projection MLP only")
+    else:
+        for p in encoder.parameters():
+            p.requires_grad = True
+        print("  Encoder unfrozen — end-to-end training")
 
     n_enc  = sum(p.numel() for p in encoder.parameters())
     print(f"  RISA encoder parameters: {n_enc:,}")
 
     # ── Projection MLP ────────────────────────────────────────────────────────
-    proj      = ProjectionMLP(in_dim=512, hidden_dim=1024, out_dim=TEXT_DIM).to(DEVICE)
-    criterion = InfoNCELoss(init_temp=0.07).to(DEVICE)
+    proj      = ProjectionMLP(in_dim=512, hidden_dim=1024, out_dim=TEXT_DIM,
+                              dropout=args.dropout).to(DEVICE)
+    criterion = InfoNCELoss(init_temp=0.07, temp_floor=args.temp_floor).to(DEVICE)
 
     if args.resume and Path(args.resume).exists():
         state = torch.load(args.resume, map_location=DEVICE, weights_only=True)
@@ -583,17 +773,25 @@ def main():
     cache_dir = ROOT / "outputs" / "text_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
+    # Multi-view caches use a different filename to avoid shape-mismatch on reload
+    mv_suffix = "_mv" if args.multi_view else ""
+
     train_text_embs = build_text_cache(
         train_ds, st_model,
-        cache_dir / f"{args.dataset}_train_text.pt", split_name="train"
+        cache_dir / f"{args.dataset}_train_text{mv_suffix}.pt", split_name="train",
+        multi_view=args.multi_view,
     )
     val_text_embs = build_text_cache(
         val_ds, st_model,
-        cache_dir / f"{args.dataset}_val_text.pt",   split_name="val"
+        cache_dir / f"{args.dataset}_val_text{mv_suffix}.pt",   split_name="val",
+        multi_view=args.multi_view,
     )
 
     # ── Training ──────────────────────────────────────────────────────────────
-    print(f"\n  Training end-to-end…")
+    if args.freeze_encoder:
+        print(f"\n  Training projection MLP (encoder frozen)…")
+    else:
+        print(f"\n  Training end-to-end…")
     train_history, val_history = train(
         encoder          = encoder,
         proj             = proj,
@@ -607,6 +805,8 @@ def main():
         lr_risa          = args.lr_risa,
         lr_proj          = args.lr_proj,
         ckpt_dir         = ckpt_dir,
+        patience         = args.patience,
+        freeze_encoder   = args.freeze_encoder,
     )
 
     # Save final checkpoint
@@ -632,7 +832,12 @@ def main():
         )
         gallery_z = F.normalize(gallery_z, dim=-1)
 
-        val_text_embs_n = F.normalize(val_text_embs, dim=-1).to("cpu")
+        # Collapse multi-view to mean for retrieval evaluation
+        if val_text_embs.dim() == 3:
+            val_text_flat = val_text_embs.mean(dim=1)     # [N, D]
+        else:
+            val_text_flat = val_text_embs                  # [N, D]
+        val_text_embs_n = F.normalize(val_text_flat, dim=-1).to("cpu")
 
         # val labels
         from torch.utils.data import Subset
