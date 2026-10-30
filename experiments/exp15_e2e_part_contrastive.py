@@ -37,7 +37,8 @@ Text targets (from part labels):
   - For each shape, generate part-composition description via connected-
     component counting on per-point part labels.
   - Multi-view: 1 class-bearing view ("a chair with a back, seat, 4 legs")
-    + 9 class-agnostic views ("something with a back, seat, 4 legs" etc.)
+    + N class-agnostic views ("something with a back, seat, 4 legs" etc.)
+    configurable via --n_agnostic (default 1).
   - Each batch samples one random view per shape — text augmentation
     that teaches invariance to phrasing while keeping part composition
     as the discriminative signal.
@@ -244,12 +245,16 @@ class _IndexedDataset(torch.utils.data.Dataset):
 
 def build_part_text_cache(dataset, st_model, cache_path: Path,
                           split_name: str = "train",
-                          dataset_name: str = "shapenet") -> torch.Tensor:
+                          dataset_name: str = "shapenet",
+                          n_agnostic: int = 1) -> torch.Tensor:
     """Pre-compute and cache part-composition text embeddings for all shapes.
 
     Uses exp13's build_shape_descriptions_dual() to generate:
       - 1 class-bearing description ("a chair with a back, seat, 4 legs")
-      - 9 class-agnostic descriptions ("something with a back, seat, 4 legs" etc.)
+      - up to 9 class-agnostic descriptions ("something with a back, seat, 4 legs" etc.)
+
+    n_agnostic controls how many class-agnostic views to keep (default 1).
+    If an existing cache has more views than requested, it is sliced down.
 
     Returns [N, 1 + n_agnostic, TEXT_DIM] — multi-view text embeddings.
     Each batch samples one random view per shape for text augmentation.
@@ -268,9 +273,16 @@ def build_part_text_cache(dataset, st_model, cache_path: Path,
     if cache_path.exists():
         cached = torch.load(cache_path, map_location="cpu", weights_only=True)
         if cached.dim() == 3 and cached.shape[0] == N and cached.shape[2] == TEXT_DIM:
-            print(f"  Loaded text cache ({N} embeddings, {cached.shape[1]} views) ← {cache_path}")
-            return cached
-        print(f"  Cache size mismatch — recomputing…")
+            n_cached = cached.shape[1] - 1  # views minus class-bearing
+            if n_cached >= n_agnostic:
+                # Slice down to requested number of agnostic views
+                text_embs = cached[:, :1 + n_agnostic, :]
+                print(f"  Loaded text cache ({N} embeddings, {text_embs.shape[1]} views) ← {cache_path}")
+                return text_embs
+            else:
+                print(f"  Cache has {n_cached} agnostic views, need {n_agnostic} — recomputing…")
+        else:
+            print(f"  Cache size mismatch — recomputing…")
 
     categories = getattr(raw_ds, "categories", {})
 
@@ -279,8 +291,11 @@ def build_part_text_cache(dataset, st_model, cache_path: Path,
     class_descs, agnostic_descs_all = build_shape_descriptions_dual(
         dataset, categories, dataset_name=dataset_name
     )
-    n_agnostic = len(agnostic_descs_all[0]) if agnostic_descs_all else 0
-    print(f"  {n_agnostic} class-agnostic variants per shape")
+    n_available = len(agnostic_descs_all[0]) if agnostic_descs_all else 0
+    n_agnostic = min(n_agnostic, n_available)
+    # Slice to requested number of agnostic views
+    agnostic_descs_all = [ads[:n_agnostic] for ads in agnostic_descs_all]
+    print(f"  {n_agnostic} class-agnostic variant{'s' if n_agnostic != 1 else ''} per shape")
 
     # Print samples for verification
     shown = set()
@@ -318,6 +333,62 @@ def build_part_text_cache(dataset, st_model, cache_path: Path,
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(text_embs, cache_path)
     print(f"  Text cache saved → {cache_path}")
+
+    return text_embs
+
+
+# ── Objaverse rich-text cache ────────────────────────────────────────────────
+
+def build_objaverse_text_cache(dataset, st_model, cache_path: Path,
+                               split_name: str = "test") -> torch.Tensor:
+    """Pre-compute and cache Objaverse per-object text embeddings.
+
+    Objaverse shapes carry a `texts` field (tags/captions joined as a sentence)
+    rather than structural part labels, so we encode those directly — one
+    embedding per shape.  The result shape is [N, 1, TEXT_DIM] to match the
+    multi-view convention used by build_part_text_cache, even though there is
+    only a single view.
+
+    Returns [N, 1, TEXT_DIM] tensor, cached to disk.
+    """
+    from torch.utils.data import Subset
+
+    raw_ds  = dataset.dataset if isinstance(dataset, Subset) else dataset
+    N = len(dataset)
+
+    if cache_path.exists():
+        cached = torch.load(cache_path, map_location="cpu", weights_only=True)
+        if cached.dim() == 3 and cached.shape[0] == N and cached.shape[2] == TEXT_DIM:
+            print(f"  Loaded Objaverse text cache ({N} embeddings) ← {cache_path}")
+            return cached
+        else:
+            print(f"  Objaverse text cache size mismatch — recomputing…")
+
+    texts = getattr(raw_ds, "texts", None)
+    if texts is None:
+        raise AttributeError("Dataset has no 'texts' attribute — is this an Objaverse dataset?")
+
+    # Resolve indices if Subset
+    if isinstance(dataset, Subset):
+        indices = list(dataset.indices)
+        texts = [texts[i] for i in indices]
+    else:
+        texts = list(texts)
+
+    # Show a few samples
+    print(f"  Objaverse {split_name} texts ({N} objects):")
+    for i in range(min(3, N)):
+        print(f"    [{i}] {texts[i][:120]}")
+
+    print(f"  Encoding {N} Objaverse descriptions…")
+    embs = encode_texts(texts, st_model)          # [N, TEXT_DIM]
+
+    # Wrap to [N, 1, TEXT_DIM] to match multi-view cache convention
+    text_embs = embs.unsqueeze(1)
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(text_embs, cache_path)
+    print(f"  Objaverse text cache saved → {cache_path}")
 
     return text_embs
 
@@ -410,8 +481,11 @@ def train(
     )
 
     # Build optimizer — always include encoder param group so we can
-    # unfreeze mid-training (warmup); set lr=0 when frozen
-    enc_lr_init = 0.0 if (freeze_encoder or warmup_epochs > 0) else lr_risa
+    # unfreeze mid-training (warmup).  Always start with lr_risa so the
+    # CosineAnnealingLR schedule is computed from the correct base lr;
+    # during warmup, requires_grad=False prevents gradients from flowing
+    # regardless of the lr value.
+    enc_lr_init = 0.0 if freeze_encoder else lr_risa
     opt = optim.AdamW([
         {"params": encoder.parameters(),   "lr": enc_lr_init, "weight_decay": 1e-4},
         {"params": proj.parameters(),      "lr": lr_proj,     "weight_decay": 1e-4},
@@ -427,11 +501,14 @@ def train(
     epochs_since_best = 0
 
     for epoch in range(epochs):
-        # Warmup phase: keep encoder frozen, then unfreeze and set lr
+        # Warmup phase: keep encoder frozen, then unfreeze.
+        # No need to manually set lr — the CosineAnnealingLR scheduler was
+        # initialised with lr_risa as the base and has been annealing
+        # throughout warmup.  When we unfreeze, the scheduler's current
+        # lr is already at the correct (cosine-annealed) value.
         if not freeze_encoder and warmup_epochs > 0 and epoch == warmup_epochs:
             for p in encoder.parameters():
                 p.requires_grad = True
-            opt.param_groups[0]["lr"] = lr_risa
             print(f"  epoch {epoch+1}: encoder unfrozen (warmup complete)")
 
         enc_is_frozen = freeze_encoder or (warmup_epochs > 0 and epoch < warmup_epochs)
@@ -536,13 +613,23 @@ def train(
 # ── Zero-shot transfer evaluation ─────────────────────────────────────────────
 
 def eval_zero_shot(encoder, proj, dataset_name: str, st_model,
-                   batch_size: int = 32) -> dict:
+                   batch_size: int = 32,
+                   cache_dir: Path = None) -> dict:
     """Encode a held-out dataset with no fine-tuning.
 
-    Queries: class-name text descriptions
-    Gallery: test split shape embeddings
+    Query strategy (in priority order):
+      1. Per-object rich descriptions  — if the dataset exposes a `texts`
+         attribute (e.g. Objaverse tags/captions).  Embeddings are pre-computed
+         via build_objaverse_text_cache and cached to disk.  Each shape's own
+         text is used as its query; retrieval is evaluated as text→shape with
+         the matching shape as the single relevant item (R@1/R@5/mAP@5 over
+         the test gallery, one query per gallery item).
+      2. Class-name queries            — if `categories` is a real mapping
+         (more than a single dummy class), one text query per class.
+      3. Shape→shape fallback          — val shapes used as queries when
+         neither rich texts nor real categories are available.
 
-    Returns dict with R@1, R@5, mAP@5.
+    Returns dict with R@1, R@5, mAP@5, and 'mode' key.
     """
     print(f"\n  Zero-shot transfer → {dataset_name}…")
     try:
@@ -559,29 +646,54 @@ def eval_zero_shot(encoder, proj, dataset_name: str, st_model,
 
     gallery_z, gallery_labels = encode_dataset_shapes(encoder, proj, test_ds, batch_size)
     gallery_z = F.normalize(gallery_z, dim=-1)
+    N_gallery = gallery_z.size(0)
 
-    if categories:
-        query_texts  = [f"a 3D model of a {categories[i]}" for i in sorted(categories)]
-        query_labels = torch.tensor(sorted(categories.keys()), dtype=torch.long)
-    else:
-        print(f"  No categories — using val shapes as shape queries")
-        q_z, q_labels = encode_dataset_shapes(encoder, proj, val_ds, batch_size)
-        q_z = F.normalize(q_z, dim=-1)
-        sim  = q_z @ gallery_z.T
-        r1   = recall_at_k(sim, q_labels, gallery_labels, 1)
-        r5   = recall_at_k(sim, q_labels, gallery_labels, 5)
-        map5 = mean_ap_at_k(sim, q_labels, gallery_labels, 5)
-        print(f"    shape→shape  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}")
-        return {"R@1": r1, "R@5": r5, "mAP@5": map5, "mode": "shape2shape"}
+    # ── Strategy 1: per-object rich descriptions (Objaverse texts) ──────────
+    rich_texts = getattr(base_test, "texts", None)
+    if rich_texts is not None:
+        _cache_dir = cache_dir if cache_dir is not None else (ROOT / "outputs" / "text_cache")
+        cache_path = _cache_dir / f"{dataset_name}_test_rich_text.pt"
+        text_embs = build_objaverse_text_cache(
+            test_ds, st_model, cache_path, split_name="test"
+        )                                                    # [N_gallery, 1, TEXT_DIM]
+        q_embs = F.normalize(text_embs[:, 0, :], dim=-1)    # [N_gallery, TEXT_DIM]
 
-    q_embs = encode_texts(query_texts, st_model)
-    q_embs = F.normalize(q_embs, dim=-1)
-    sim    = q_embs @ gallery_z.T
-    r1     = recall_at_k(sim,  query_labels, gallery_labels, 1)
-    r5     = recall_at_k(sim,  query_labels, gallery_labels, 5)
-    map5   = mean_ap_at_k(sim, query_labels, gallery_labels, 5)
-    print(f"    text→shape  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}")
-    return {"R@1": r1, "R@5": r5, "mAP@5": map5, "mode": "text2shape"}
+        # Each query's "correct" match is itself in the gallery
+        gallery_ids = torch.arange(N_gallery, dtype=torch.long)
+
+        sim   = q_embs @ gallery_z.T                         # [N_gallery, N_gallery]
+        r1    = recall_at_k(sim,  gallery_ids, gallery_ids, 1)
+        r5    = recall_at_k(sim,  gallery_ids, gallery_ids, 5)
+        map5  = mean_ap_at_k(sim, gallery_ids, gallery_ids, 5)
+        print(f"    text→shape (rich)  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}")
+        return {"R@1": r1, "R@5": r5, "mAP@5": map5, "mode": "text2shape_rich"}
+
+    # ── Strategy 2: one class-name query per category ────────────────────────
+    # Treat the dummy single-class Objaverse mapping as absent.
+    real_categories = {k: v for k, v in categories.items() if v != "object"}
+    if real_categories:
+        query_texts  = [f"a 3D model of a {real_categories[i]}"
+                        for i in sorted(real_categories)]
+        query_labels = torch.tensor(sorted(real_categories.keys()), dtype=torch.long)
+        q_embs = encode_texts(query_texts, st_model)
+        q_embs = F.normalize(q_embs, dim=-1)
+        sim    = q_embs @ gallery_z.T
+        r1     = recall_at_k(sim,  query_labels, gallery_labels, 1)
+        r5     = recall_at_k(sim,  query_labels, gallery_labels, 5)
+        map5   = mean_ap_at_k(sim, query_labels, gallery_labels, 5)
+        print(f"    text→shape  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}")
+        return {"R@1": r1, "R@5": r5, "mAP@5": map5, "mode": "text2shape"}
+
+    # ── Strategy 3: shape→shape fallback ────────────────────────────────────
+    print(f"  No categories or rich texts — using val shapes as shape queries")
+    q_z, q_labels = encode_dataset_shapes(encoder, proj, val_ds, batch_size)
+    q_z = F.normalize(q_z, dim=-1)
+    sim  = q_z @ gallery_z.T
+    r1   = recall_at_k(sim, q_labels, gallery_labels, 1)
+    r5   = recall_at_k(sim, q_labels, gallery_labels, 5)
+    map5 = mean_ap_at_k(sim, q_labels, gallery_labels, 5)
+    print(f"    shape→shape  R@1={r1:.3f}  R@5={r5:.3f}  mAP@5={map5:.3f}")
+    return {"R@1": r1, "R@5": r5, "mAP@5": map5, "mode": "shape2shape"}
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -593,7 +705,7 @@ def main():
     parser.add_argument("--K",          type=int,   default=256,
                         help="Gumbel-K points selected per shape")
     parser.add_argument("--epochs",     type=int,   default=50)
-    parser.add_argument("--batch_size", type=int,   default=64,
+    parser.add_argument("--batch_size", type=int,   default=128,
                         help="Large batches = more negatives per InfoNCE step")
     parser.add_argument("--lr_risa",    type=float, default=1e-6,
                         help="Learning rate for RISA encoder (unfrozen)")
@@ -601,24 +713,25 @@ def main():
                         help="Learning rate for projection MLP + temperature")
     parser.add_argument("--patience",   type=int,   default=10,
                         help="Early stopping patience (0 = disabled)")
-    parser.add_argument("--temp_floor", type=float, default=0.05,
+    parser.add_argument("--temp_floor", type=float, default=0.07,
                         help="Minimum temperature floor for InfoNCE")
     parser.add_argument("--dropout",    type=float, default=0.2,
                         help="Dropout rate in projection MLP")
     parser.add_argument("--freeze_encoder", action="store_true", default=False,
                         help="Freeze RISA encoder — train only projection MLP (ablation: matches exp13)")
-    parser.add_argument("--warmup_epochs", type=int, default=10,
+    parser.add_argument("--warmup_epochs", type=int, default=5,
                         help="Freeze encoder for this many epochs before end-to-end training")
     parser.add_argument("--min_delta",   type=float, default=0.005,
                         help="Minimum val loss improvement to reset early stopping counter")
     parser.add_argument("--risa_ckpt",  type=str,   default=None,
                         help="Warm-start RISA from this checkpoint (optional)")
-    parser.add_argument("--no_warm_start", action="store_true", default=False,
-                        help="Skip auto warm-start from exp10 — train RISA from random init")
     parser.add_argument("--resume",     type=str,   default=None,
                         help="Resume full model from exp15 checkpoint dict")
     parser.add_argument("--dataset",    default="shapenet",
                         help="Dataset with part labels (default: shapenet)")
+    parser.add_argument("--n_agnostic", type=int,   default=1,
+                        help="Number of class-agnostic text views per shape (default 1, max 9). "
+                             "Reduces near-duplicate text targets that don't add regularization signal.")
     parser.add_argument("--st_model",   default="all-mpnet-base-v2")
     parser.add_argument("--zero_shot",  nargs="*",
                         default=["modelnet40"],
@@ -660,7 +773,7 @@ def main():
     print(f"  lr_risa={args.lr_risa}  lr_proj={args.lr_proj}")
     print(f"  dropout={args.dropout}  temp_floor={args.temp_floor}  patience={args.patience}  min_delta={args.min_delta}")
     print(f"  freeze_encoder={args.freeze_encoder}  warmup_epochs={args.warmup_epochs}")
-    print(f"  text encoder: {args.st_model}")
+    print(f"  text encoder: {args.st_model}  n_agnostic={args.n_agnostic}")
     print(f"  dataset: {args.dataset}  (part-composition targets)")
     print(f"  output: {out_dir}")
     print(f"{'='*60}\n")
@@ -688,16 +801,8 @@ def main():
         state = torch.load(args.risa_ckpt, map_location=DEVICE, weights_only=True)
         encoder.load_state_dict(state, strict=False)
         print(f"  Warm-started RISA from: {args.risa_ckpt}")
-    elif args.no_warm_start:
-        print("  No warm-start requested — training RISA from random init")
     else:
-        auto_ckpt = ckpt_dir / "exp10_fps_K.pt"
-        if auto_ckpt.exists():
-            state = torch.load(auto_ckpt, map_location=DEVICE, weights_only=True)
-            encoder.load_state_dict(state, strict=False)
-            print(f"  Warm-started RISA from exp10 checkpoint: {auto_ckpt}")
-        else:
-            print("  No RISA checkpoint found — training from random init")
+        print("  No warm-start — training RISA from random init")
 
     if args.freeze_encoder:
         for p in encoder.parameters():
@@ -731,37 +836,55 @@ def main():
                            root=DATA_ROOT, num_points=N_POINTS)
     print(f"  Train: {len(train_ds)} shapes   Val: {len(val_ds)} shapes   Test: {len(test_ds)} shapes")
 
-    # ── Verify part_labels exist ─────────────────────────────────────────────
-    base_train = getattr(train_ds, "dataset", train_ds)
-    if base_train.part_labels is None:
-        print("  Error: dataset has no part_labels. Use --dataset shapenet.")
-        sys.exit(1)
-
     # ── Sentence-transformer ──────────────────────────────────────────────────
     print(f"  Loading sentence-transformer: {args.st_model}")
     st_model = load_sentence_transformer(args.st_model)
     print(f"  ✓ sentence-transformer ready")
 
-    # ── Part-composition text embedding cache ──────────────────────────────────
+    # ── Text embedding cache ───────────────────────────────────────────────────
+    # Objaverse: use per-object rich texts already in the dataset.
+    # Part-labelled datasets (ShapeNet, PartNet): generate part-composition
+    # descriptions from part_labels via build_part_text_cache.
     cache_dir = ROOT / "outputs" / "text_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    train_text_embs = build_part_text_cache(
-        train_ds, st_model,
-        cache_dir / f"{args.dataset}_train_part_text.pt", split_name="train",
-        dataset_name=args.dataset,
-    )
-    val_text_embs = build_part_text_cache(
-        val_ds, st_model,
-        cache_dir / f"{args.dataset}_val_part_text.pt", split_name="val",
-        dataset_name=args.dataset,
-    )
+    base_train = getattr(train_ds, "dataset", train_ds)
+    has_rich_texts  = getattr(base_train, "texts",       None) is not None
+    has_part_labels = getattr(base_train, "part_labels", None) is not None
+
+    if has_rich_texts:
+        print(f"  Dataset '{args.dataset}' has rich texts — using object descriptions as targets")
+        train_text_embs = build_objaverse_text_cache(
+            train_ds, st_model,
+            cache_dir / f"{args.dataset}_train_rich_text.pt", split_name="train",
+        )
+        val_text_embs = build_objaverse_text_cache(
+            val_ds, st_model,
+            cache_dir / f"{args.dataset}_val_rich_text.pt", split_name="val",
+        )
+    elif has_part_labels:
+        print(f"  Dataset '{args.dataset}' has part labels — using part-composition descriptions as targets")
+        train_text_embs = build_part_text_cache(
+            train_ds, st_model,
+            cache_dir / f"{args.dataset}_train_part_text.pt", split_name="train",
+            dataset_name=args.dataset,
+            n_agnostic=args.n_agnostic,
+        )
+        val_text_embs = build_part_text_cache(
+            val_ds, st_model,
+            cache_dir / f"{args.dataset}_val_part_text.pt", split_name="val",
+            dataset_name=args.dataset,
+            n_agnostic=args.n_agnostic,
+        )
+    else:
+        print(f"  Error: dataset '{args.dataset}' has neither 'texts' nor 'part_labels'.")
+        sys.exit(1)
 
     # ── Training ──────────────────────────────────────────────────────────────
     if args.freeze_encoder:
         print(f"\n  Training projection MLP (encoder frozen)…")
     else:
-        print(f"\n  Training end-to-end (part-composition targets)…")
+        print(f"\n  Training end-to-end ({'rich object texts' if has_rich_texts else 'part-composition targets'})…")
     train_history, val_history = train(
         encoder          = encoder,
         proj             = proj,
@@ -788,7 +911,6 @@ def main():
     print(f"  Final checkpoint saved → {final_ckpt}")
 
     # ── Part-query retrieval evaluation ────────────────────────────────────────
-    print(f"\n  Part-query retrieval (test gallery, top-{args.topk_eval})…")
     base_test = getattr(test_ds, "dataset", test_ds)
     categories = getattr(base_train, "categories", {})
 
@@ -796,20 +918,25 @@ def main():
         encoder, proj, test_ds, args.batch_size
     )
     gallery_z = F.normalize(gallery_z, dim=-1)
-    gallery_indices = torch.arange(len(base_test))
 
-    queries = PARTNET_PART_QUERIES if args.dataset.lower() == "partnet" else PART_QUERIES
-    part_query_results = evaluate_part_queries(
-        queries         = queries,
-        gallery_z       = gallery_z,
-        gallery_labels  = gallery_labels,
-        gallery_indices = gallery_indices,
-        categories      = categories,
-        st_model        = st_model,
-        raw_ds          = base_test,
-        topk            = args.topk_eval,
-        dataset_name    = args.dataset,
-    )
+    if getattr(base_test, "part_labels", None) is not None:
+        print(f"\n  Part-query retrieval (test gallery, top-{args.topk_eval})…")
+        gallery_indices = torch.arange(len(base_test))
+        queries = PARTNET_PART_QUERIES if args.dataset.lower() == "partnet" else PART_QUERIES
+        part_query_results = evaluate_part_queries(
+            queries         = queries,
+            gallery_z       = gallery_z,
+            gallery_labels  = gallery_labels,
+            gallery_indices = gallery_indices,
+            categories      = categories,
+            st_model        = st_model,
+            raw_ds          = base_test,
+            topk            = args.topk_eval,
+            dataset_name    = args.dataset,
+        )
+    else:
+        print(f"\n  Part-query retrieval skipped (no part_labels in '{args.dataset}')")
+        part_query_results = {}
 
     # ── Standard text→shape retrieval (class-level) ───────────────────────────
     print(f"\n  Standard text→shape retrieval (class-level, test gallery)…")
@@ -867,7 +994,9 @@ def main():
     zero_shot_results = {}
     for ds_name in (args.zero_shot or []):
         zero_shot_results[ds_name] = eval_zero_shot(
-            encoder, proj, ds_name, st_model, batch_size=args.batch_size
+            encoder, proj, ds_name, st_model,
+            batch_size=args.batch_size,
+            cache_dir=cache_dir,
         )
 
     # ── Save results ──────────────────────────────────────────────────────────

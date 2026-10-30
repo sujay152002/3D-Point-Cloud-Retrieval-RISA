@@ -120,120 +120,170 @@ for cls_idx, part_ids in enumerate(SHAPE_NET_PART_SEG_CLASSES):
         PART_ID_TO_INFO[global_id] = (cls_name, pname)
 
 # ── PartNet part name mapping ─────────────────────────────────────────────────
-# PartNet uses per-category 0-based part IDs (remapped during preprocessing).
-# These names come from the after_merging_label_ids level-3 taxonomy.
-# Each entry maps local_part_id → part_name for that category.
+# PartNet sem_seg_h5 label IDs are 1-indexed sequential values corresponding to
+# the leaf order in the official after_merging_label_ids level-specific stats files.
+# ID 0 is "other" (unlabelled points) and is skipped in part descriptions.
+# Source: https://github.com/daerduoCarey/partnet_seg_exps
+# Verified against data/partnet/sem_seg_h5 h5 files (Oct 2026).
 PARTNET_PART_NAMES: dict[str, dict[int, str]] = {
-    "Bag":              {0: "body", 1: "handle", 2: "strap", 3: "pocket"},
-    "Bed":              {0: "bed frame", 1: "headboard", 2: "footboard",
-                         3: "leg", 4: "sleep area", 5: "side rail",
-                         6: "ladder", 7: "support", 8: "surface",
-                         9: "drawer", 10: "slat", 11: "mattress",
-                         12: "pillow", 13: "bar", 14: "column"},
-    "Bottle":           {0: "body", 1: "cap", 2: "neck",
-                         3: "mouth", 4: "base", 5: "label",
-                         6: "handle", 7: "nozzle", 8: "pump"},
-    "Bowl":             {0: "body", 1: "base", 2: "lip", 3: "handle"},
-    "Chair":            {0: "back", 1: "seat", 2: "leg", 3: "arm",
-                         4: "armrest", 5: "back support", 6: "seat support",
-                         7: "footrest", 8: "wheel", 9: "star base",
-                         10: "seat cushion", 11: "back cushion",
-                         12: "back frame", 13: "seat frame",
-                         14: "headrest", 15: "connector",
-                         16: "rocker", 17: "stretcher",
-                         18: "frame", 19: "base",
-                         20: "central support", 21: "runner",
-                         22: "arm sofa", 23: "back sofa",
-                         24: "ottoman", 25: "ottoman frame",
-                         26: "ottoman base", 27: "ottoman cushion",
-                         28: "ottoman leg", 29: "ottoman wheel",
-                         30: "ottoman arm", 31: "side panel",
-                         32: "lounge chair back", 33: "lounge chair base",
-                         34: "lounge chair leg", 35: "lounge chair arm",
-                         36: "lounge chair frame", 37: "lounge bar",
-                         38: "rocking bar"},
-    "Clock":            {0: "body", 1: "face", 2: "hand",
-                         3: "frame", 4: "base", 5: "pendulum",
-                         6: "knob", 7: "battery", 8: "button",
-                         9: "leg", 10: "hook"},
-    "Dishwasher":       {0: "body", 1: "door", 2: "rack",
-                         3: "handle", 4: "control panel", 5: "base",
-                         6: "foot"},
-    "Display":          {0: "screen", 1: "base", 2: "support", 3: "frame"},
-    "Door":             {0: "door", 1: "frame", 2: "handle",
-                         3: "hinge", 4: "knob"},
-    "Earphone":         {0: "earcup", 1: "headband", 2: "cable",
-                         3: "driver", 4: "cushion", 5: "microphone",
-                         6: "jack", 7: "adjuster", 8: "clip",
-                         9: "cover"},
-    "Faucet":           {0: "body", 1: "handle", 2: "spout",
-                         3: "base", 4: "knob", 5: "valve",
-                         6: "aerator", 7: "pipe", 8: "escutcheon",
-                         9: "cartridge", 10: "supply line", 11: "drain"},
-    "Hat":              {0: "crown", 1: "brim", 2: "band",
-                         3: "button", 4: "visor", 5: "ear flap"},
-    "Keyboard":         {0: "key", 1: "body", 2: "cable"},
-    "Knife":            {0: "blade", 1: "handle", 2: "guard",
-                         3: "bolster", 4: "tip", 5: "spine",
-                         6: "edge", 7: "rivet", 8: "tang", 9: "pommel"},
-    "Lamp":             {0: "base", 1: "shade", 2: "bulb",
-                         3: "tube", 4: "arm", 5: "canopy",
-                         6: "socket", 7: "switch", 8: "cord",
-                         9: "diffuser", 10: "head", 11: "clamp",
-                         12: "harp", 13: "finial", 14: "stem",
-                         15: "support", 16: "column", 17: "foot",
-                         18: "reflector", 19: "cover", 20: "chain",
-                         21: "ring", 22: "bar", 23: "mounting",
-                         24: "ceiling plate", 25: "globe",
-                         26: "chimney", 27: "font", 28: "bracket",
-                         29: "base plate", 30: "neck", 31: "connector",
-                         32: "rail", 33: "spotlight",
-                         34: "string light", 35: "rope",
-                         36: "pendant", 37: "wire", 38: "cage",
-                         39: "frame", 40: "panel"},
-    "Laptop":           {0: "screen", 1: "keyboard", 2: "hinge"},
-    "Microwave":        {0: "body", 1: "door", 2: "handle",
-                         3: "control panel", 4: "foot", 5: "window"},
-    "Mug":              {0: "body", 1: "handle", 2: "base", 3: "lip"},
-    "Refrigerator":     {0: "body", 1: "door", 2: "handle",
-                         3: "hinge", 4: "shelf", 5: "foot", 6: "drawer"},
-    "Scissors":         {0: "blade", 1: "handle", 2: "pivot"},
-    "StorageFurniture": {0: "body", 1: "door", 2: "drawer",
-                         3: "leg", 4: "shelf", 5: "back panel",
-                         6: "top panel", 7: "handle", 8: "side panel",
-                         9: "bottom panel", 10: "foot", 11: "rail",
-                         12: "bar", 13: "frame", 14: "support",
-                         15: "knob", 16: "lock", 17: "hinge",
-                         18: "column", 19: "base", 20: "pull",
-                         21: "runner", 22: "divider", 23: "countertop"},
-    "Table":            {0: "top", 1: "leg", 2: "support",
-                         3: "shelf", 4: "drawer", 5: "bar stretcher",
-                         6: "pedestal", 7: "frame", 8: "apron",
-                         9: "base", 10: "wheel", 11: "leaf",
-                         12: "cross stretcher", 13: "tray",
-                         14: "handle", 15: "connector",
-                         16: "side panel", 17: "back panel",
-                         18: "door", 19: "bottom panel",
-                         20: "runner", 21: "pull", 22: "knob",
-                         23: "lock", 24: "foot", 25: "column",
-                         26: "glass top", 27: "rim", 28: "center support",
-                         29: "lower shelf", 30: "back foot",
-                         31: "front foot", 32: "desktop",
-                         33: "partition", 34: "keyboard tray",
-                         35: "monitor stand", 36: "cup holder",
-                         37: "side rail", 38: "central support",
-                         39: "round top", 40: "bench top",
-                         41: "bench leg", 42: "bench support",
-                         43: "bench foot", 44: "bench frame",
-                         45: "bench apron", 46: "bench stretcher",
-                         47: "bench connector", 48: "bench drawer",
-                         49: "bench shelf", 50: "bench rail"},
-    "TrashCan":         {0: "body", 1: "lid", 2: "base",
-                         3: "handle", 4: "wheel", 5: "pedal",
-                         6: "inner", 7: "bag holder",
-                         8: "foot", 9: "frame", 10: "opening"},
-    "Vase":             {0: "body", 1: "base", 2: "lip",
-                         3: "handle", 4: "neck", 5: "foot"},
+    # 0 = other (all categories)
+    "Bag":              {0: "other",
+                         1: "bag body", 2: "handle", 3: "shoulder strap"},
+    "Bed":              {0: "other",
+                         1: "pillow", 2: "mattress",
+                         3: "frame horizontal hard surface",
+                         4: "frame horizontal surface bar",
+                         5: "bar stretcher", 6: "leg", 7: "surface base",
+                         8: "bed side surface horizontal bar",
+                         9: "bed side surface panel",
+                         10: "bed side surface vertical bar",
+                         11: "bed post", 12: "headboard",
+                         13: "ladder vertical bar", 14: "rung"},
+    "Bottle":           {0: "other",
+                         1: "body", 2: "closure", 3: "lid",
+                         4: "handle", 5: "neck", 6: "mouth",
+                         7: "body", 8: "handle"},
+    "Bowl":             {0: "other",
+                         1: "container", 2: "containing things", 3: "bottom"},
+    "Chair":            {0: "other",
+                         1: "headrest", 2: "head connector",
+                         3: "back surface vertical bar",
+                         4: "back surface horizontal bar",
+                         5: "back single surface", 6: "back connector",
+                         7: "back support", 8: "back frame vertical bar",
+                         9: "back frame horizontal bar",
+                         10: "back holistic frame",
+                         11: "arm sofa style", 12: "arm horizontal bar",
+                         13: "arm near vertical bar",
+                         14: "arm writing table", 15: "arm holistic frame",
+                         16: "arm connector", 17: "wheel",
+                         18: "caster stem", 19: "leg",
+                         20: "central support", 21: "knob", 22: "lever",
+                         23: "foot", 24: "runner", 25: "bar stretcher",
+                         26: "rocker", 27: "leg", 28: "foot",
+                         29: "pedestal", 30: "central support",
+                         31: "seat support", 32: "seat holistic frame",
+                         33: "seat frame bar", 34: "seat surface bar",
+                         35: "seat single surface", 36: "chair base",
+                         37: "seat support", 38: "seat surface"},
+    "Clock":            {0: "other",
+                         1: "frame", 2: "surface", 3: "foot",
+                         4: "base surface", 5: "foot", 6: "base surface",
+                         7: "box", 8: "pendulum body",
+                         9: "chain", 10: "pendulum clock top"},
+    "Dishwasher":       {0: "other",
+                         1: "frame", 2: "door frame", 3: "handle",
+                         4: "foot", 5: "surface", 6: "surface"},
+    "Display":          {0: "other",
+                         1: "screen frame", 2: "screen",
+                         3: "base support", 4: "surface"},
+    "Door":             {0: "other",
+                         1: "outside frame", 2: "fixed part",
+                         3: "movable part", 4: "surface board"},
+    "Earphone":         {0: "other",
+                         1: "earbud connector", 2: "earbud frame",
+                         3: "earbud pad", 4: "earbud connector wire",
+                         5: "top band", 6: "earcup pad",
+                         7: "earcup frame", 8: "earcup connector",
+                         9: "connector wire"},
+    "Faucet":           {0: "other",
+                         1: "switch", 2: "hose", 3: "tube",
+                         4: "horizontal support", 5: "vertical support",
+                         6: "surface base", 7: "tube", 8: "switch",
+                         9: "horizontal support", 10: "vertical support",
+                         11: "surface base"},
+    "Hat":              {0: "other",
+                         1: "crown", 2: "brim", 3: "button",
+                         4: "bill", 5: "panel"},
+    "Keyboard":         {0: "other",
+                         1: "frame", 2: "key"},
+    "Knife":            {0: "other",
+                         1: "guard", 2: "handle", 3: "butt",
+                         4: "blade", 5: "guard", 6: "handle",
+                         7: "butt", 8: "bolster", 9: "blade"},
+    "Lamp":             {0: "other",
+                         1: "lamp arm", 2: "lamp shade", 3: "light bulb",
+                         4: "lamp body", 5: "chain", 6: "lamp base part",
+                         7: "cord", 8: "chain", 9: "lamp shade",
+                         10: "light bulb", 11: "lamp base part",
+                         12: "cord", 13: "lamp pole",
+                         14: "lamp body solid",
+                         15: "lamp arm straight bar",
+                         16: "lamp body vertical panel",
+                         17: "connector", 18: "lamp arm straight bar",
+                         19: "lamp arm curved bar", 20: "lamp shade",
+                         21: "light bulb", 22: "lamp finial",
+                         23: "lamp wireframe fitter",
+                         24: "lamp base part", 25: "leg",
+                         26: "lamp body", 27: "lamp arm straight bar",
+                         28: "lamp arm curved bar", 29: "lamp shade",
+                         30: "lamp base part", 31: "lamp post",
+                         32: "street lamp base",
+                         33: "lamp arm straight bar",
+                         34: "lamp arm curved bar", 35: "lamp shade",
+                         36: "lamp cover frame top",
+                         37: "lamp cover frame bottom",
+                         38: "lamp cover frame bar",
+                         39: "light bulb", 40: "lamp cover holder"},
+    "Laptop":           {0: "other",
+                         1: "screen side", 2: "base side"},
+    "Microwave":        {0: "other",
+                         1: "frame", 2: "door frame", 3: "handle",
+                         4: "tray", 5: "foot"},
+    "Mug":              {0: "other",
+                         1: "body", 2: "handle", 3: "containing things"},
+    "Refrigerator":     {0: "other",
+                         1: "frame", 2: "door frame", 3: "handle",
+                         4: "shelf", 5: "foot", 6: "surface"},
+    "Scissors":         {0: "other",
+                         1: "blade", 2: "handle"},
+    "StorageFurniture": {0: "other",
+                         1: "countertop", 2: "shelf",
+                         3: "frame vertical bar", 4: "back panel",
+                         5: "top panel", 6: "vertical side panel",
+                         7: "frame horizontal bar",
+                         8: "vertical front panel", 9: "bottom panel",
+                         10: "vertical divider panel",
+                         11: "drawer back", 12: "drawer bottom",
+                         13: "drawer side", 14: "drawer front",
+                         15: "handle", 16: "bottom panel",
+                         17: "base side panel", 18: "foot",
+                         19: "wheel", 20: "caster stem",
+                         21: "hinge", 22: "handle",
+                         23: "cabinet door surface"},
+    "Table":            {0: "other",
+                         1: "ping pong net", 2: "tabletop surface",
+                         3: "bar stretcher", 4: "leg", 5: "pool ball",
+                         6: "tabletop surface", 7: "bar", 8: "leg",
+                         9: "tabletop surface", 10: "leg",
+                         11: "bench connector", 12: "bench",
+                         13: "glass", 14: "bar", 15: "board",
+                         16: "tabletop dropleaf", 17: "bar", 18: "leg",
+                         19: "central support", 20: "tabletop connector",
+                         21: "bar stretcher", 22: "leg", 23: "runner",
+                         24: "circular stretcher", 25: "foot",
+                         26: "wheel", 27: "caster stem",
+                         28: "tabletop connector", 29: "back panel",
+                         30: "bar stretcher", 31: "leg",
+                         32: "vertical side panel", 33: "shelf",
+                         34: "handle", 35: "cabinet door surface",
+                         36: "drawer back", 37: "drawer bottom",
+                         38: "drawer side", 39: "drawer front",
+                         40: "handle", 41: "keyboard tray surface",
+                         42: "vertical front panel", 43: "foot",
+                         44: "bottom panel", 45: "wheel",
+                         46: "caster stem", 47: "vertical divider panel",
+                         48: "pedestal", 49: "tabletop connector",
+                         50: "central support"},
+    "TrashCan":         {0: "other",
+                         1: "container bottom", 2: "container box",
+                         3: "container neck", 4: "frame vertical bar",
+                         5: "frame horizontal circle", 6: "frame bottom",
+                         7: "frame holistic", 8: "foot",
+                         9: "cover support", 10: "cover lid"},
+    "Vase":             {0: "other",
+                         1: "lid", 2: "container", 3: "foot",
+                         4: "plant", 5: "liquid or soil"},
 }
 
 
@@ -399,6 +449,8 @@ def _build_part_phrases(
         _, pname = PART_ID_TO_INFO.get(pid, ("", f"part{pid}"))
         if pname in seen_names:
             continue
+        if pname in ("other", ""):   # skip unlabelled / unknown parts
+            continue
         seen_names.add(pname)
 
         if pname in COUNTABLE_PARTS:
@@ -488,16 +540,28 @@ def build_shape_descriptions(dataset, categories: dict) -> list[str]:
     Returns list of strings, one per shape, aligned with dataset indices.
     """
     from torch.utils.data import Subset
+
+    def _unwrap_subset(ds):
+        """Recursively unwrap Subset wrappers to get to the base dataset."""
+        while isinstance(ds, Subset):
+            ds = ds.dataset
+        return ds
+
     if isinstance(dataset, Subset):
-        raw_ds  = dataset.dataset
+        base_ds = _unwrap_subset(dataset)
         indices = dataset.indices
     else:
-        raw_ds  = dataset
-        indices = range(len(raw_ds))
+        base_ds = dataset
+        indices = range(len(dataset))
 
-    part_labels_all = raw_ds.part_labels   # [N_raw, 1024] global part IDs
-    labels_all      = raw_ds.labels        # [N_raw] class indices
-    points_all      = getattr(raw_ds, "points", None)  # [N_raw, 1024, 3]
+    part_labels_all = getattr(base_ds, "part_labels", None)
+    labels_all      = getattr(base_ds, "labels", None)
+    points_all      = getattr(base_ds, "points", None)
+
+    if part_labels_all is None:
+        raise ValueError("Dataset must have part_labels attribute for text generation")
+    if labels_all is None:
+        raise ValueError("Dataset must have labels attribute for text generation")
 
     descriptions = []
     for raw_i in indices:
@@ -542,17 +606,31 @@ def build_shape_descriptions_dual(
                            ...]  — one per prefix in _AGOSTIC_PREFIXES
     """
     from torch.utils.data import Subset
+
+    def _unwrap_subset(ds):
+        """Recursively unwrap Subset wrappers to get to the base dataset."""
+        while isinstance(ds, Subset):
+            ds = ds.dataset
+        return ds
+
     if isinstance(dataset, Subset):
-        raw_ds  = dataset.dataset
+        base_ds = _unwrap_subset(dataset)
         indices = dataset.indices
     else:
-        raw_ds  = dataset
-        indices = range(len(raw_ds))
+        base_ds = dataset
+        indices = range(len(dataset))
 
-    part_labels_all = raw_ds.part_labels
-    labels_all      = raw_ds.labels
-    points_all      = getattr(raw_ds, "points", None)
+    # Access attributes from base dataset
+    part_labels_all = getattr(base_ds, "part_labels", None)
+    labels_all      = getattr(base_ds, "labels", None)
+    points_all      = getattr(base_ds, "points", None)
     is_partnet      = dataset_name.lower() == "partnet"
+
+    # Validate required attributes
+    if part_labels_all is None:
+        raise ValueError("Dataset must have part_labels attribute for text generation")
+    if labels_all is None:
+        raise ValueError("Dataset must have labels attribute for text generation")
 
     class_descs        = []
     agnostic_descs_all = []
@@ -564,9 +642,8 @@ def build_shape_descriptions_dual(
         cnt = Counter(per_point.tolist())
 
         if is_partnet:
-            # PartNet: part IDs are already local (0-based per category).
-            # All non-negative IDs present in this shape are valid.
-            present = sorted(pid for pid in cnt if pid >= 0)
+            # PartNet: part IDs are 1-indexed; ID 0 = "other"/unlabelled — skip.
+            present = sorted(pid for pid in cnt if pid > 0)
 
             # Build a per-shape PART_ID_TO_INFO equivalent using PartNet names
             partnet_id_info = {
@@ -898,22 +975,22 @@ PART_QUERIES = [
 # and PartNet part vocabulary from PARTNET_PART_NAMES.
 PARTNET_PART_QUERIES = [
     # Single-part structural queries (cross-class)
-    ("something with legs",            {"leg"},         {"Chair", "Table", "Bed", "StorageFurniture"}),
-    ("a shape with a handle",          {"handle"},      {"Bag", "Knife", "Mug", "Faucet", "Door",
-                                                          "Dishwasher", "Refrigerator", "StorageFurniture"}),
-    ("an object with a blade",         {"blade"},       {"Knife", "Scissors"}),
-    ("something with a drawer",        {"drawer"},      {"StorageFurniture", "Table", "Refrigerator"}),
-    ("a shape with a door",            {"door"},        {"StorageFurniture", "Dishwasher",
-                                                          "Refrigerator", "Microwave"}),
-    ("an object with a lid",           {"lid"},         {"TrashCan", "Bottle"}),
-    ("something with a shade",         {"shade"},       {"Lamp"}),
-    ("a shape with a wheel",           {"wheel"},       {"Chair", "TrashCan"}),
-    ("an object with a screen",        {"screen"},      {"Display", "Laptop"}),
-    # Multi-part queries (more specific)
-    ("a shape with a back and a seat", {"back", "seat"},{"Chair"}),
-    ("something with a top and legs",  {"top", "leg"},  {"Table"}),
-    ("an object with a body and a cap",{"body", "cap"}, {"Bottle"}),
-    ("a shape with a blade and handle",{"blade", "handle"}, {"Knife", "Scissors"}),
+    ("something with legs",            {"leg"},              {"Chair", "Table", "Bed", "StorageFurniture"}),
+    ("a shape with a handle",          {"handle"},           {"Bag", "Knife", "Mug", "Faucet",
+                                                               "Dishwasher", "Refrigerator", "StorageFurniture"}),
+    ("an object with a blade",         {"blade"},            {"Knife", "Scissors"}),
+    ("something with a drawer",        {"drawer front"},     {"StorageFurniture", "Table"}),
+    ("a shape with a door",            {"door frame"},       {"StorageFurniture", "Dishwasher",
+                                                               "Refrigerator", "Microwave"}),
+    ("an object with a lid",           {"cover lid"},        {"TrashCan"}),
+    ("something with a shade",         {"lamp shade"},       {"Lamp"}),
+    ("a shape with a wheel",           {"wheel"},            {"Chair", "TrashCan", "StorageFurniture", "Table"}),
+    ("an object with a screen",        {"display screen"},   {"Display"}),
+    ("something with a shelf",         {"shelf"},            {"StorageFurniture", "Table", "Refrigerator"}),
+    # Multi-part queries
+    ("a shape with a back and a seat", {"back connector", "chair base"}, {"Chair"}),
+    ("an object with a body and a lid",{"body", "cover lid"},{"TrashCan"}),
+    ("a shape with a blade and handle",{"blade", "handle"},  {"Knife", "Scissors"}),
 ]
 
 

@@ -140,9 +140,12 @@ def _generate_text_views(text: str, rng: random.Random) -> list[str]:
       5: Name + description (drop tags)
       6: Shuffled tag order (if multiple tags present)
       7: Random tag subset (drop 1-2 tags)
+      8: Hybrid — "a 3D model of a {name}, specifically: {tags or desc}"
+         (mirrors the PartNet class-hybrid view: anchors on object identity
+         then adds context, bridging class-level and descriptive signals)
     """
     if not text or text == "3D object":
-        return [text] * 8
+        return [text] * 9
 
     # Split into sentences by '. ' — the download script joins fields with '. '
     sentences = [s.strip() for s in text.split('. ') if s.strip()]
@@ -150,8 +153,9 @@ def _generate_text_views(text: str, rng: random.Random) -> list[str]:
     sentences = [s if s.endswith('.') else s + '.' for s in sentences]
 
     if len(sentences) <= 1:
-        # Not enough structure to split — return minor variations
-        return [text] * 8
+        # Not enough structure to split — return minor variations with hybrid
+        hybrid = f"a 3D model of a {text.rstrip('.')}"
+        return [text] * 8 + [hybrid]
 
     name      = sentences[0] if sentences else text
     remaining = sentences[1:] if len(sentences) > 1 else []
@@ -190,6 +194,14 @@ def _generate_text_views(text: str, rng: random.Random) -> list[str]:
         views.append('. '.join(subset))
     else:
         views.append(full)
+
+    # 8: Hybrid — anchor on object name, add tags/description as context
+    # e.g. "a 3D model of a Guerlain perfume bottle, specifically: body, storage, scent"
+    name_clean = name.rstrip('.')
+    context = tags if tags else desc if desc else full
+    context_clean = context.rstrip('.')
+    hybrid = f"a 3D model of a {name_clean}, specifically: {context_clean}"
+    views.append(hybrid)
 
     return views
 
@@ -234,14 +246,17 @@ def build_text_cache(dataset, st_model, cache_path: Path,
     if multi_view:
         rng = random.Random(42)   # deterministic view generation
         all_texts = []
+        n_views = None
         for i in indices:
             text = raw_ds[i][2]
             views = _generate_text_views(text, rng)
-            all_texts.extend(views)   # [N * 8]
+            if n_views is None:
+                n_views = len(views)
+            all_texts.extend(views)   # [N * n_views]
 
-        print(f"  Encoding {N} texts × 8 views for {split_name} split…")
-        embs = encode_texts(all_texts, st_model)            # [N * 8, TEXT_DIM]
-        embs = embs.view(N, 8, TEXT_DIM)                    # [N, 8, TEXT_DIM]
+        print(f"  Encoding {N} texts × {n_views} views for {split_name} split…")
+        embs = encode_texts(all_texts, st_model)              # [N * n_views, TEXT_DIM]
+        embs = embs.view(N, n_views, TEXT_DIM)                # [N, n_views, TEXT_DIM]
     else:
         texts = [raw_ds[i][2] for i in indices]
         print(f"  Encoding {N} texts for {split_name} split…")
@@ -384,8 +399,10 @@ def train(
     lr_risa:         float,
     lr_proj:         float,
     ckpt_dir:        Path,
-    patience:        int = 0,        # 0 = no early stopping
-    freeze_encoder:  bool = False,   # if True, encoder is frozen
+    patience:        int = 0,
+    min_delta:       float = 0.005,
+    freeze_encoder:  bool = False,
+    warmup_epochs:   int = 0,
 ) -> tuple:
     """End-to-end training loop.
 
@@ -431,19 +448,12 @@ def train(
         collate_fn  = _text_collate_fn,
     )
 
-    # Build optimizer — exclude encoder if frozen
-    if freeze_encoder:
-        opt = optim.AdamW([
-            {"params": proj.parameters(),      "lr": lr_proj,  "weight_decay": 1e-4},
-            {"params": criterion.parameters(), "lr": lr_proj,  "weight_decay": 0.0},
-        ])
-    else:
-        # Differential learning rates — encoder gets 10× lower lr than projection
-        opt = optim.AdamW([
-            {"params": encoder.parameters(),   "lr": lr_risa,  "weight_decay": 1e-4},
-            {"params": proj.parameters(),      "lr": lr_proj,  "weight_decay": 1e-4},
-            {"params": criterion.parameters(), "lr": lr_proj,  "weight_decay": 0.0},
-        ])
+    enc_lr_init = 0.0 if (freeze_encoder or warmup_epochs > 0) else lr_risa
+    opt = optim.AdamW([
+        {"params": encoder.parameters(),   "lr": enc_lr_init, "weight_decay": 1e-4},
+        {"params": proj.parameters(),      "lr": lr_proj,     "weight_decay": 1e-4},
+        {"params": criterion.parameters(), "lr": lr_proj,     "weight_decay": 0.0},
+    ])
     scheduler = optim.lr_scheduler.CosineAnnealingLR(
         opt, T_max=epochs, eta_min=1e-7
     )
@@ -454,11 +464,21 @@ def train(
     epochs_since_best = 0
 
     for epoch in range(epochs):
-        # Keep frozen encoder in eval mode (no dropout/BN updates)
-        if freeze_encoder:
+        if not freeze_encoder and warmup_epochs > 0 and epoch == warmup_epochs:
+            for p in encoder.parameters():
+                p.requires_grad = True
+            opt.param_groups[0]["lr"] = lr_risa
+            print(f"  epoch {epoch+1}: encoder unfrozen (warmup complete)")
+
+        enc_is_frozen = freeze_encoder or (warmup_epochs > 0 and epoch < warmup_epochs)
+        if enc_is_frozen:
             encoder.eval()
+            for p in encoder.parameters():
+                p.requires_grad = False
         else:
             encoder.train()
+            for p in encoder.parameters():
+                p.requires_grad = True
         proj.train(); criterion.train()
         total_loss, n_batches = 0.0, 0
 
@@ -484,7 +504,7 @@ def train(
             opt.zero_grad()
             loss.backward()
             # Separate gradient clipping: tighter for encoder, looser for head
-            if not freeze_encoder:
+            if not enc_is_frozen:
                 nn.utils.clip_grad_norm_(encoder.parameters(), 1.0)
             nn.utils.clip_grad_norm_(proj.parameters(),    5.0)
             opt.step()
@@ -522,7 +542,7 @@ def train(
         val_avg = val_loss / max(val_n, 1)
         val_history.append(val_avg)
 
-        is_best = val_avg < best_val_loss
+        is_best = val_avg < (best_val_loss - min_delta)
         if is_best:
             best_val_loss = val_avg
             torch.save(
@@ -533,23 +553,14 @@ def train(
         else:
             epochs_since_best += 1
 
-        # Build log line — show lr_risa only when encoder is trained
-        if freeze_encoder:
-            print(
-                f"  epoch {epoch+1:3d}/{epochs}  "
-                f"loss={train_avg:.4f}  val={val_avg:.4f}  "
-                f"temp={criterion.temperature:.3f}  "
-                f"lr_proj={opt.param_groups[0]['lr']:.2e}"
-                f"{'  ★' if is_best else ''}"
-            )
-        else:
-            print(
-                f"  epoch {epoch+1:3d}/{epochs}  "
-                f"loss={train_avg:.4f}  val={val_avg:.4f}  "
-                f"temp={criterion.temperature:.3f}  "
-                f"lr_risa={opt.param_groups[0]['lr']:.2e}"
-                f"{'  ★' if is_best else ''}"
-            )
+        print(
+            f"  epoch {epoch+1:3d}/{epochs}  "
+            f"loss={train_avg:.4f}  val={val_avg:.4f}  gap={val_avg-train_avg:+.4f}  "
+            f"temp={criterion.temperature:.3f}  "
+            f"lr_enc={opt.param_groups[0]['lr']:.2e}  "
+            f"lr_proj={opt.param_groups[1]['lr']:.2e}"
+            f"{'  ★' if is_best else ''}"
+        )
 
         # Early stopping
         if patience > 0 and epochs_since_best >= patience:
@@ -629,23 +640,27 @@ def main():
     )
     parser.add_argument("--K",          type=int,   default=256,
                         help="Gumbel-K points selected per shape")
-    parser.add_argument("--epochs",     type=int,   default=30)
+    parser.add_argument("--epochs",     type=int,   default=60)
     parser.add_argument("--batch_size", type=int,   default=128,
                         help="Large batches = more negatives per InfoNCE step")
-    parser.add_argument("--lr_risa",    type=float, default=3e-6,
+    parser.add_argument("--lr_risa",    type=float, default=1e-6,
                         help="Learning rate for RISA encoder (unfrozen)")
     parser.add_argument("--lr_proj",    type=float, default=1e-4,
                         help="Learning rate for projection MLP + temperature")
-    parser.add_argument("--patience",   type=int,   default=5,
+    parser.add_argument("--patience",   type=int,   default=15,
                         help="Early stopping patience (0 = disabled)")
-    parser.add_argument("--temp_floor", type=float, default=0.03,
+    parser.add_argument("--min_delta",  type=float, default=0.005,
+                        help="Minimum val loss improvement to reset early stopping counter")
+    parser.add_argument("--temp_floor", type=float, default=0.05,
                         help="Minimum temperature floor for InfoNCE")
-    parser.add_argument("--dropout",    type=float, default=0.1,
+    parser.add_argument("--dropout",    type=float, default=0.2,
                         help="Dropout rate in projection MLP")
     parser.add_argument("--multi_view", action="store_true", default=False,
                         help="Generate 8 text views per shape (anti-overfitting)")
     parser.add_argument("--freeze_encoder", action="store_true", default=False,
                         help="Freeze RISA encoder — train only projection MLP (anti-overfitting)")
+    parser.add_argument("--warmup_epochs", type=int, default=10,
+                        help="Freeze encoder for this many epochs before e2e training")
     parser.add_argument("--risa_ckpt",  type=str,   default=None,
                         help="Warm-start RISA from this checkpoint (optional)")
     parser.add_argument("--no_warm_start", action="store_true", default=False,
@@ -655,8 +670,11 @@ def main():
     parser.add_argument("--dataset",    default="objaverse")
     parser.add_argument("--st_model",   default="all-mpnet-base-v2")
     parser.add_argument("--zero_shot",  nargs="*",
-                        default=["shapenet", "modelnet40"],
+                        default=["shapenet", "modelnet40", "modelnet10",
+                                 "scanobjectnn", "partnet"],
                         help="Datasets to evaluate zero-shot transfer on")
+    parser.add_argument("--eval_only",  action="store_true", default=False,
+                        help="Skip training — load --resume checkpoint and run zero-shot eval only")
     parser.add_argument("--seed",       type=int,   default=42)
     args = parser.parse_args()
 
@@ -667,7 +685,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Redirect stdout to both terminal and log file
-    tag = "frozen" if args.freeze_encoder else "e2e"
+    tag = "evalonly" if args.eval_only else ("frozen" if args.freeze_encoder else "e2e")
     log_path = ROOT / "outputs" / f"exp14_{tag}_run_{ts}.log"
     log_f    = open(log_path, "w", buffering=1)
 
@@ -690,9 +708,8 @@ def main():
     print(f"  Exp 14 — End-to-End InfoNCE (RISA fps_K + Objaverse)")
     print(f"  K={args.K}  epochs={args.epochs}  batch={args.batch_size}")
     print(f"  lr_risa={args.lr_risa}  lr_proj={args.lr_proj}")
-    print(f"  dropout={args.dropout}  temp_floor={args.temp_floor}  patience={args.patience}")
-    print(f"  multi_view={args.multi_view}")
-    print(f"  freeze_encoder={args.freeze_encoder}")
+    print(f"  dropout={args.dropout}  temp_floor={args.temp_floor}  patience={args.patience}  min_delta={args.min_delta}")
+    print(f"  multi_view={args.multi_view}  freeze_encoder={args.freeze_encoder}  warmup_epochs={args.warmup_epochs}")
     print(f"  text encoder: {args.st_model}")
     print(f"  dataset: {args.dataset}")
     print(f"  output: {out_dir}")
@@ -773,46 +790,57 @@ def main():
     cache_dir = ROOT / "outputs" / "text_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Multi-view caches use a different filename to avoid shape-mismatch on reload
-    mv_suffix = "_mv" if args.multi_view else ""
-
-    train_text_embs = build_text_cache(
-        train_ds, st_model,
-        cache_dir / f"{args.dataset}_train_text{mv_suffix}.pt", split_name="train",
-        multi_view=args.multi_view,
-    )
-    val_text_embs = build_text_cache(
-        val_ds, st_model,
-        cache_dir / f"{args.dataset}_val_text{mv_suffix}.pt",   split_name="val",
-        multi_view=args.multi_view,
-    )
-
-    # ── Training ──────────────────────────────────────────────────────────────
-    if args.freeze_encoder:
-        print(f"\n  Training projection MLP (encoder frozen)…")
+    if args.eval_only:
+        # ── Eval-only: skip training entirely ─────────────────────────────────
+        if not (args.resume and Path(args.resume).exists()):
+            print("  --eval_only requires --resume <checkpoint>. Aborting.")
+            sys.exit(1)
+        print(f"\n  --eval_only: skipping training, running zero-shot eval only.")
+        train_history, val_history = [], []
     else:
-        print(f"\n  Training end-to-end…")
-    train_history, val_history = train(
-        encoder          = encoder,
-        proj             = proj,
-        criterion        = criterion,
-        train_ds         = train_ds,
-        val_ds           = val_ds,
-        train_text_embs  = train_text_embs,
-        val_text_embs    = val_text_embs,
-        epochs           = args.epochs,
-        batch_size       = args.batch_size,
-        lr_risa          = args.lr_risa,
-        lr_proj          = args.lr_proj,
-        ckpt_dir         = ckpt_dir,
-        patience         = args.patience,
-        freeze_encoder   = args.freeze_encoder,
-    )
+        # ── Text embedding cache ───────────────────────────────────────────────
+        # Multi-view caches use a different filename to avoid shape-mismatch on reload
+        mv_suffix = "_mv" if args.multi_view else ""
 
-    # Save final checkpoint
-    final_ckpt = ckpt_dir / "exp14_fps_K_final.pt"
-    torch.save({"encoder": encoder.state_dict(), "proj": proj.state_dict()}, final_ckpt)
-    print(f"  Final checkpoint saved → {final_ckpt}")
+        train_text_embs = build_text_cache(
+            train_ds, st_model,
+            cache_dir / f"{args.dataset}_train_text{mv_suffix}.pt", split_name="train",
+            multi_view=args.multi_view,
+        )
+        val_text_embs = build_text_cache(
+            val_ds, st_model,
+            cache_dir / f"{args.dataset}_val_text{mv_suffix}.pt",   split_name="val",
+            multi_view=args.multi_view,
+        )
+
+        # ── Training ──────────────────────────────────────────────────────────
+        if args.freeze_encoder:
+            print(f"\n  Training projection MLP (encoder frozen)…")
+        else:
+            print(f"\n  Training end-to-end…")
+        train_history, val_history = train(
+            encoder          = encoder,
+            proj             = proj,
+            criterion        = criterion,
+            train_ds         = train_ds,
+            val_ds           = val_ds,
+            train_text_embs  = train_text_embs,
+            val_text_embs    = val_text_embs,
+            epochs           = args.epochs,
+            batch_size       = args.batch_size,
+            lr_risa          = args.lr_risa,
+            lr_proj          = args.lr_proj,
+            ckpt_dir         = ckpt_dir,
+            patience         = args.patience,
+            min_delta        = args.min_delta,
+            freeze_encoder   = args.freeze_encoder,
+            warmup_epochs    = args.warmup_epochs,
+        )
+
+        # Save final checkpoint
+        final_ckpt = ckpt_dir / "exp14_fps_K_final.pt"
+        torch.save({"encoder": encoder.state_dict(), "proj": proj.state_dict()}, final_ckpt)
+        print(f"  Final checkpoint saved → {final_ckpt}")
 
     # ── Zero-shot transfer evaluation ─────────────────────────────────────────
     zero_shot_results = {}

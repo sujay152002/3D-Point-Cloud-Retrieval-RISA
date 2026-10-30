@@ -1,0 +1,424 @@
+{
+  "config": {
+    "K": 256,
+    "epochs": 0,
+    "batch_size": 64,
+    "lr_risa": 1e-06,
+    "lr_proj": 0.0001,
+    "patience": 10,
+    "temp_floor": 0.07,
+    "dropout": 0.2,
+    "freeze_encoder": false,
+    "warmup_epochs": 5,
+    "min_delta": 0.005,
+    "risa_ckpt": "outputs/checkpoints/exp15_partnet_fps_K_best.pt",
+    "no_warm_start": false,
+    "resume": null,
+    "dataset": "partnet",
+    "n_agnostic": 2,
+    "rich_descriptions": true,
+    "st_model": "all-mpnet-base-v2",
+    "zero_shot": [
+      "objaverse"
+    ],
+    "topk_eval": 10,
+    "seed": 42
+  },
+  "train_loss_history": [],
+  "val_loss_history": [],
+  "part_query_retrieval": [
+    {
+      "query": "something with legs",
+      "part_names": [
+        "leg"
+      ],
+      "expected_classes": [
+        "Bed",
+        "StorageFurniture",
+        "Chair",
+        "Table"
+      ],
+      "top_classes": [
+        "Chair",
+        "Table",
+        "Table",
+        "Table",
+        "Table",
+        "Table",
+        "Table",
+        "Table",
+        "Door",
+        "Table"
+      ],
+      "part_hit_rate": 0.9,
+      "class_hit_rate": 0.9
+    },
+    {
+      "query": "a shape with a handle",
+      "part_names": [
+        "handle"
+      ],
+      "expected_classes": [
+        "Faucet",
+        "Dishwasher",
+        "StorageFurniture",
+        "Mug",
+        "Knife",
+        "Bag",
+        "Refrigerator"
+      ],
+      "top_classes": [
+        "Hat",
+        "Vase",
+        "Mug",
+        "Mug",
+        "Mug",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Bottle",
+        "Knife"
+      ],
+      "part_hit_rate": 0.7,
+      "class_hit_rate": 0.7
+    },
+    {
+      "query": "an object with a blade",
+      "part_names": [
+        "blade"
+      ],
+      "expected_classes": [
+        "Scissors",
+        "Knife"
+      ],
+      "top_classes": [
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife"
+      ],
+      "part_hit_rate": 1.0,
+      "class_hit_rate": 1.0
+    },
+    {
+      "query": "something with a drawer",
+      "part_names": [
+        "drawer front"
+      ],
+      "expected_classes": [
+        "StorageFurniture",
+        "Table"
+      ],
+      "top_classes": [
+        "StorageFurniture",
+        "StorageFurniture",
+        "Microwave",
+        "StorageFurniture",
+        "Bag",
+        "StorageFurniture",
+        "Table",
+        "StorageFurniture",
+        "StorageFurniture",
+        "Table"
+      ],
+      "part_hit_rate": 0.6,
+      "class_hit_rate": 0.8
+    },
+    {
+      "query": "a shape with a door",
+      "part_names": [
+        "door frame"
+      ],
+      "expected_classes": [
+        "StorageFurniture",
+        "Dishwasher",
+        "Microwave",
+        "Refrigerator"
+      ],
+      "top_classes": [
+        "Door",
+        "Door",
+        "Door",
+        "Keyboard",
+        "Keyboard",
+        "Door",
+        "Keyboard",
+        "Table",
+        "Display",
+        "Door"
+      ],
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.0
+    },
+    {
+      "query": "an object with a lid",
+      "part_names": [
+        "cover lid"
+      ],
+      "expected_classes": [
+        "TrashCan"
+      ],
+      "top_classes": [
+        "Vase",
+        "Vase",
+        "Vase",
+        "Vase",
+        "TrashCan",
+        "Bottle",
+        "Bowl",
+        "Hat",
+        "Lamp",
+        "TrashCan"
+      ],
+      "part_hit_rate": 0.1,
+      "class_hit_rate": 0.2
+    },
+    {
+      "query": "something with a shade",
+      "part_names": [
+        "lamp shade"
+      ],
+      "expected_classes": [
+        "Lamp"
+      ],
+      "top_classes": [
+        "Chair",
+        "Lamp",
+        "Lamp",
+        "Lamp",
+        "Lamp",
+        "Vase",
+        "Lamp",
+        "Vase",
+        "Lamp",
+        "Lamp"
+      ],
+      "part_hit_rate": 0.7,
+      "class_hit_rate": 0.7
+    },
+    {
+      "query": "a shape with a wheel",
+      "part_names": [
+        "wheel"
+      ],
+      "expected_classes": [
+        "StorageFurniture",
+        "Chair",
+        "TrashCan",
+        "Table"
+      ],
+      "top_classes": [
+        "Vase",
+        "Vase",
+        "TrashCan",
+        "Vase",
+        "Bowl",
+        "Vase",
+        "Bottle",
+        "TrashCan",
+        "Lamp",
+        "Vase"
+      ],
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.2
+    },
+    {
+      "query": "an object with a screen",
+      "part_names": [
+        "display screen"
+      ],
+      "expected_classes": [
+        "Display"
+      ],
+      "top_classes": [
+        "Display",
+        "Bowl",
+        "Display",
+        "Display",
+        "Door",
+        "Door",
+        "Display",
+        "Door",
+        "Door",
+        "Display"
+      ],
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.5
+    },
+    {
+      "query": "something with a shelf",
+      "part_names": [
+        "shelf"
+      ],
+      "expected_classes": [
+        "StorageFurniture",
+        "Refrigerator",
+        "Table"
+      ],
+      "top_classes": [
+        "Table",
+        "Lamp",
+        "Table",
+        "StorageFurniture",
+        "StorageFurniture",
+        "Bag",
+        "Table",
+        "Table",
+        "Table",
+        "Table"
+      ],
+      "part_hit_rate": 0.6,
+      "class_hit_rate": 0.8
+    },
+    {
+      "query": "a shape with a back and a seat",
+      "part_names": [
+        "back connector",
+        "chair base"
+      ],
+      "expected_classes": [
+        "Chair"
+      ],
+      "top_classes": [
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair",
+        "Chair"
+      ],
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 1.0
+    },
+    {
+      "query": "an object with a body and a lid",
+      "part_names": [
+        "body",
+        "cover lid"
+      ],
+      "expected_classes": [
+        "TrashCan"
+      ],
+      "top_classes": [
+        "Vase",
+        "Vase",
+        "Hat",
+        "TrashCan",
+        "Vase",
+        "TrashCan",
+        "Bowl",
+        "TrashCan",
+        "Vase",
+        "Lamp"
+      ],
+      "part_hit_rate": 0.0,
+      "class_hit_rate": 0.3
+    },
+    {
+      "query": "a shape with a blade and handle",
+      "part_names": [
+        "blade",
+        "handle"
+      ],
+      "expected_classes": [
+        "Scissors",
+        "Knife"
+      ],
+      "top_classes": [
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife",
+        "Knife"
+      ],
+      "part_hit_rate": 1.0,
+      "class_hit_rate": 1.0
+    }
+  ],
+  "class_retrieval": {
+    "R@1": 0.5833333333333334,
+    "R@5": 1.0,
+    "mAP@5": 0.5886111110448837
+  },
+  "rotation_results": [
+    {
+      "angle": 0,
+      "R@1": 0.7412587412587412,
+      "R@5": 0.9068825910931174,
+      "mAP@5": 0.665850815833997
+    },
+    {
+      "angle": 15,
+      "R@1": 0.7423629002576371,
+      "R@5": 0.9002576370997424,
+      "mAP@5": 0.6639393939366883
+    },
+    {
+      "angle": 30,
+      "R@1": 0.7445712182554288,
+      "R@5": 0.9043062200956937,
+      "mAP@5": 0.6628548644924585
+    },
+    {
+      "angle": 45,
+      "R@1": 0.7368421052631579,
+      "R@5": 0.902834008097166,
+      "mAP@5": 0.6679511717017801
+    },
+    {
+      "angle": 60,
+      "R@1": 0.7515642252484358,
+      "R@5": 0.9020979020979021,
+      "mAP@5": 0.6679499447071513
+    },
+    {
+      "angle": 90,
+      "R@1": 0.7453073242546927,
+      "R@5": 0.9083548030916452,
+      "mAP@5": 0.6678358482763879
+    },
+    {
+      "angle": 120,
+      "R@1": 0.7423629002576371,
+      "R@5": 0.9039381670960618,
+      "mAP@5": 0.6670408539169626
+    },
+    {
+      "angle": 150,
+      "R@1": 0.7464114832535885,
+      "R@5": 0.9083548030916452,
+      "mAP@5": 0.6642841369363373
+    },
+    {
+      "angle": 180,
+      "R@1": 0.743099006256901,
+      "R@5": 0.9020979020979021,
+      "mAP@5": 0.665910931143815
+    }
+  ],
+  "zero_shot_transfer": {
+    "objaverse": {
+      "R@1": 0.0004036327009089291,
+      "R@5": 0.003229061607271433,
+      "mAP@5": 0.001560713048093021,
+      "mode": "text2shape_self",
+      "n_queries": 4955
+    }
+  },
+  "timestamp": "20261030_084220"
+}

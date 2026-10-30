@@ -1036,6 +1036,7 @@ def build_exp11b(data):
         info=info_grid(
             Model=tag_list(["RISA + ProjectionMLP"]),
             Dataset=tag_list(["ShapeNet"]),
+
             Prior=tag_list([cfg.get("prior", "?")]),
             Metric="R@1 · R@5 · mAP@5",
             **{"Proj Epochs": str(cfg.get("epochs", "?"))},
@@ -1045,6 +1046,323 @@ def build_exp11b(data):
             **{"N Views": str(cfg.get("n_views", "?"))},
         ),
         table=chart + loss_chart + modal_tbl + tpl_tbl + rot_tbl,
+        ai=ai,
+    )
+
+
+def build_exp14(data):
+    if not data:
+        tbl = "<p class='pending'>Exp 14 still running — rerun update_site.sh when complete.</p>"
+        return dict(
+            id="exp14", title="Exp 14 — End-to-End Text Retrieval",
+            question="Does end-to-end InfoNCE training on Objaverse text descriptions improve cross-dataset retrieval?",
+            info=info_grid(
+                Model=tag_list(["RISA + ProjectionMLP"]),
+                Dataset=tag_list(["Objaverse"]),
+                Metric="R@1 · R@5 · mAP@5",
+            ),
+            table=tbl, ai="<em>Results pending.</em>",
+        )
+
+    cfg  = data.get("config", {})
+    zs   = data.get("zero_shot_transfer", {})
+    obs  = data.get("objaverse_retrieval", {})
+    train_hist = data.get("train_loss_history", [])
+    val_hist   = data.get("val_loss_history", [])
+
+    # ── Loss curves ───────────────────────────────────────────────────────────
+    if train_hist and val_hist:
+        loss_pts_train = [(i + 1, v) for i, v in enumerate(train_hist)]
+        loss_pts_val   = [(i + 1, v) for i, v in enumerate(val_hist)]
+        loss_series = [
+            ("Train loss", COLORS[0], loss_pts_train),
+            ("Val loss",   COLORS[1], loss_pts_val),
+        ]
+        loss_chart = line_chart(loss_series, title="InfoNCE loss curve (Objaverse training)")
+    else:
+        loss_chart = ""
+
+    # ── Zero-shot transfer table ──────────────────────────────────────────────
+    zs_rows = []
+    for zs_ds, res in zs.items():
+        zs_rows.append(td_row(
+            zs_ds,
+            fmt(res.get("R@1")), fmt(res.get("R@5")), fmt(res.get("mAP@5")),
+            res.get("mode", "—"),
+        ))
+    zs_tbl = make_table(
+        th("Dataset", "R@1 (%)", "R@5 (%)", "mAP@5 (%)", "Mode"),
+        zs_rows, "Zero-shot transfer after Objaverse end-to-end training"
+    )
+
+    # ── Objaverse self-retrieval card ─────────────────────────────────────────
+    self_rows = [td_row(
+        "Objaverse (self)",
+        fmt(obs.get("R@1")), fmt(obs.get("R@5")), fmt(obs.get("mAP@5")),
+        "text→shape (rich)",
+    )]
+    self_tbl = make_table(
+        th("Dataset", "R@1 (%)", "R@5 (%)", "mAP@5 (%)", "Mode"),
+        self_rows, "Objaverse in-distribution retrieval (text→shape, per-object descriptions)"
+    )
+
+    summary = (
+        f"dataset=objaverse, K={cfg.get('K')}, epochs={cfg.get('epochs')}, "
+        f"lr_risa={cfg.get('lr_risa')}, lr_proj={cfg.get('lr_proj')}, "
+        f"batch={cfg.get('batch_size')}, multi_view={cfg.get('multi_view')}\n"
+        f"Objaverse self-retrieval: R@1={fmt(obs.get('R@1'))}%, R@5={fmt(obs.get('R@5'))}%, mAP@5={fmt(obs.get('mAP@5'))}%\n"
+        + "\n".join(
+            f"zero-shot {zs_ds}: R@1={fmt(r.get('R@1'))}%, R@5={fmt(r.get('R@5'))}%, mAP@5={fmt(r.get('mAP@5'))}%"
+            for zs_ds, r in zs.items()
+        )
+    )
+    ai = ask_llm(
+        "You are a researcher analyzing end-to-end text-guided 3D shape retrieval. "
+        "Exp 14 trains a RISA encoder + projection MLP jointly on Objaverse using InfoNCE loss against per-object text descriptions "
+        "(tags and captions joined into sentences, encoded by all-mpnet-base-v2). "
+        "The encoder is unfrozen — gradients flow through both the projection MLP and RISA. "
+        "After training, the model is evaluated: (1) in-distribution on Objaverse itself (text→shape), "
+        "and (2) zero-shot on ShapeNet and ModelNet40 without any fine-tuning. "
+        f"Results:\n{summary}\n"
+        "Write 5-6 sentences covering: "
+        "(1) what the near-perfect Objaverse self-retrieval score means — note each shape has a unique description so R@1=1.0 is expected but non-trivial to achieve, "
+        "(2) the zero-shot transfer gap to ShapeNet and ModelNet40 and what explains it — Objaverse has open-vocabulary tags, ShapeNet/ModelNet use class names, "
+        "(3) how differential learning rates (very low lr_risa vs lr_proj) protect the encoder's rotation invariance while adapting to text, "
+        "(4) the role of multi-view text augmentation in preventing the model from memorising specific phrasing, "
+        "(5) what this baseline tells us about training 3D encoders with internet-scale noisy text supervision."
+    )
+    return dict(
+        id="exp14", title="Exp 14 — End-to-End Text Retrieval",
+        question="Does end-to-end InfoNCE training on Objaverse text descriptions improve cross-dataset retrieval?",
+        info=info_grid(
+            Model=tag_list(["RISA + ProjectionMLP"]),
+            Dataset=tag_list(["Objaverse"]),
+            **{"Text Encoder": tag_list(["all-mpnet-base-v2"])},
+            Metric="R@1 · R@5 · mAP@5",
+            **{"K": str(cfg.get("K", "?"))},
+            **{"Epochs": str(cfg.get("epochs", "?"))},
+            **{"Multi-view": str(cfg.get("multi_view", "?"))},
+        ),
+        table=loss_chart + self_tbl + zs_tbl,
+        ai=ai,
+    )
+
+
+def _build_exp15_single(data, color_offset=0):
+    """Render one exp15 run into HTML blocks. Returns (html_block, summary_str, cfg)."""
+    if not data:
+        return "<p class='pending'>Results pending.</p>", "", {}
+
+    cfg    = data.get("config", {})
+    rot    = data.get("rotation_results", [])
+    pq     = data.get("part_query_retrieval", [])
+    cls_r  = data.get("class_retrieval", {})
+    zs     = data.get("zero_shot_transfer", {})
+    train_hist = data.get("train_loss_history", [])
+    val_hist   = data.get("val_loss_history", [])
+    ds     = cfg.get("dataset", "shapenet")
+    c0     = COLORS[(0 + color_offset) % len(COLORS)]
+    c1     = COLORS[(1 + color_offset) % len(COLORS)]
+
+    # ── Loss curves ───────────────────────────────────────────────────────────
+    if train_hist and val_hist:
+        loss_pts_train = [(i + 1, v) for i, v in enumerate(train_hist)]
+        loss_pts_val   = [(i + 1, v) for i, v in enumerate(val_hist)]
+        loss_series = [
+            ("Train loss", c0, loss_pts_train),
+            ("Val loss",   c1, loss_pts_val),
+        ]
+        loss_chart = line_chart(loss_series, title=f"InfoNCE loss curve ({ds} training)")
+    else:
+        loss_chart = ""
+
+    # ── Rotation robustness table + chart ─────────────────────────────────────
+    rot_rows = [
+        td_row(
+            f"{int(r['angle'])}°",
+            fmt(r.get("R@1")), fmt(r.get("R@5")), fmt(r.get("mAP@5")),
+        )
+        for r in rot
+    ]
+    rot_tbl = make_table(
+        th("Angle", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+        rot_rows, f"Shape-to-shape rotation robustness — val→test ({ds})"
+    )
+    if rot:
+        rot_series = [("R@1", c0, [(r["angle"], r["R@1"]) for r in rot])]
+        rot_chart  = line_chart(rot_series, title="R@1 (%) vs rotation angle")
+    else:
+        rot_chart = ""
+
+    # ── Part-query retrieval table ─────────────────────────────────────────────
+    avg_part_hit = avg_class_hit = None
+    if pq:
+        pq_rows = [
+            td_row(
+                r.get("query", "—"),
+                ", ".join(r.get("part_names", [])),
+                fmt(r.get("part_hit_rate")),
+                fmt(r.get("class_hit_rate")),
+            )
+            for r in pq
+        ]
+        pq_tbl = make_table(
+            th("Query", "Part Names", "part_hit@10 (%)", "class_hit@10 (%)"),
+            pq_rows, f"Part-query structural retrieval (top-{cfg.get('topk_eval', 10)}) — {ds} test gallery"
+        )
+        avg_part_hit  = sum(r.get("part_hit_rate",  0) for r in pq) / len(pq)
+        avg_class_hit = sum(r.get("class_hit_rate", 0) for r in pq) / len(pq)
+        pq_summary = (
+            f"<p style='font-size:.85rem;color:#8b949e;margin-bottom:1rem'>"
+            f"Mean part_hit@10: <strong style='color:#3fb950'>{fmt(avg_part_hit)}%</strong> &nbsp;·&nbsp; "
+            f"Mean class_hit@10: <strong style='color:#58a6ff'>{fmt(avg_class_hit)}%</strong>"
+            f"</p>"
+        )
+    else:
+        pq_tbl = pq_summary = ""
+
+    # ── Class-level text→shape table ──────────────────────────────────────────
+    if cls_r:
+        cls_rows = [td_row(
+            "text→shape (class names)",
+            fmt(cls_r.get("R@1")), fmt(cls_r.get("R@5")), fmt(cls_r.get("mAP@5")),
+        )]
+        cls_tbl = make_table(
+            th("Mode", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"),
+            cls_rows, f"Standard class-level text→shape retrieval — {ds} test gallery"
+        )
+    else:
+        cls_tbl = ""
+
+    # ── Zero-shot transfer table ──────────────────────────────────────────────
+    if zs:
+        zs_rows = [
+            td_row(
+                ds_name,
+                fmt(r.get("R@1")), fmt(r.get("R@5")), fmt(r.get("mAP@5")),
+                r.get("mode", "—"),
+            )
+            for ds_name, r in zs.items()
+        ]
+        zs_tbl = make_table(
+            th("Dataset", "R@1 (%)", "R@5 (%)", "mAP@5 (%)", "Mode"),
+            zs_rows, "Zero-shot transfer"
+        )
+    else:
+        zs_tbl = ""
+
+    html = loss_chart + rot_chart + rot_tbl + pq_summary + pq_tbl + cls_tbl + zs_tbl
+
+    rot0   = next((r for r in rot if r["angle"] == 0),   {})
+    rot90  = next((r for r in rot if r["angle"] == 90),  {})
+    rot180 = next((r for r in rot if r["angle"] == 180), {})
+    summary = (
+        f"dataset={ds}, K={cfg.get('K')}, epochs={cfg.get('epochs')}, "
+        f"n_agnostic={cfg.get('n_agnostic')}, lr_risa={cfg.get('lr_risa')}, "
+        f"warmup={cfg.get('warmup_epochs')}, freeze={cfg.get('freeze_encoder')}\n"
+        f"rotation: R@1@0={fmt(rot0.get('R@1'))}%, R@1@90={fmt(rot90.get('R@1'))}%, R@1@180={fmt(rot180.get('R@1'))}%\n"
+        f"class retrieval: R@1={fmt(cls_r.get('R@1'))}%, mAP@5={fmt(cls_r.get('mAP@5'))}%\n"
+        + (f"part queries: mean part_hit@10={fmt(avg_part_hit)}%, mean class_hit@10={fmt(avg_class_hit)}%\n"
+           if avg_part_hit is not None else "")
+        + "\n".join(
+            f"zero-shot {n}: R@1={fmt(r.get('R@1'))}%, mAP@5={fmt(r.get('mAP@5'))}%"
+            for n, r in zs.items()
+        )
+    )
+    return html, summary, cfg
+
+
+def build_exp15(data_sn, data_pn):
+    if not data_sn and not data_pn:
+        tbl = "<p class='pending'>Exp 15 still running — rerun update_site.sh when complete.</p>"
+        return dict(
+            id="exp15", title="Exp 15 — Part-Composition Text Retrieval",
+            question="Does end-to-end training with part-composition text targets teach the encoder fine-grained structural discrimination?",
+            info=info_grid(
+                Model=tag_list(["RISA + ProjectionMLP"]),
+                Dataset=tag_list(["ShapeNet / PartNet"]),
+                Metric="R@1 · R@5 · mAP@5 · part_hit_rate",
+            ),
+            table=tbl, ai="<em>Results pending.</em>",
+        )
+
+    sn_html, sn_summary, sn_cfg = _build_exp15_single(data_sn, color_offset=0)
+    pn_html, pn_summary, pn_cfg = _build_exp15_single(data_pn, color_offset=2)
+
+    # ── Side-by-side panel layout ─────────────────────────────────────────────
+    def _col(label, dataset_tag, html_content):
+        return (
+            f"<div style='flex:1;min-width:0'>"
+            f"<h3 style='font-size:.82rem;font-weight:700;color:#58a6ff;text-transform:uppercase;"
+            f"letter-spacing:.08em;margin-bottom:1rem;padding-bottom:.5rem;"
+            f"border-bottom:2px solid rgba(88,166,255,.25)'>"
+            f"{label} <span style='font-weight:400;color:#8b949e;text-transform:none;"
+            f"font-size:.78rem'>({dataset_tag})</span></h3>"
+            f"{html_content}"
+            f"</div>"
+        )
+
+    sn_label = "ShapeNet" if data_sn else ""
+    pn_label = "PartNet"  if data_pn else ""
+
+    if data_sn and data_pn:
+        cols = (
+            f"<div style='display:flex;gap:2rem;align-items:flex-start'>"
+            f"{_col('Run A', sn_label, sn_html)}"
+            f"<div style='width:1px;background:rgba(48,54,61,.8);align-self:stretch;flex-shrink:0'></div>"
+            f"{_col('Run B', pn_label, pn_html)}"
+            f"</div>"
+        )
+    elif data_sn:
+        cols = sn_html
+    else:
+        cols = pn_html
+
+    # ── Combined summary for LLM ──────────────────────────────────────────────
+    combined_summary = ""
+    if sn_summary:
+        combined_summary += f"[ShapeNet run]\n{sn_summary}\n\n"
+    if pn_summary:
+        combined_summary += f"[PartNet run]\n{pn_summary}\n"
+
+    ai = ask_llm(
+        "You are a researcher analyzing end-to-end 3D shape retrieval with part-composition text targets. "
+        "Exp 15 combines two ideas: (1) end-to-end RISA training so the encoder adapts to text-alignment gradients, "
+        "and (2) part-composition text targets that describe shapes structurally "
+        "(e.g. 'a chair with a back, seat, and 4 legs') rather than using object-level tags. "
+        "Two runs are shown side-by-side: one trained on ShapeNet, one on PartNet (richer part annotations). "
+        "Text encoder: all-mpnet-base-v2 (frozen). "
+        f"Results:\n{combined_summary}\n"
+        "Write 5-6 sentences covering: "
+        "(1) whether R@1 is stable across rotation angles 0°→180° in both runs and what that says about RISA's invariance under text supervision, "
+        "(2) how part-query structural retrieval (part_hit_rate) compares between the two datasets — "
+        "does richer PartNet annotation lead to better structural discrimination, "
+        "(3) how class-level retrieval compares between the two runs and what the ShapeNet vs PartNet gap reveals, "
+        "(4) why part-composition targets should provide richer signal than class-level tags and what the results show, "
+        "(5) what the zero-shot transfer results reveal about whether part-level training generalises beyond the training distribution."
+    )
+
+    # ── Info grid — merge key config fields from both runs ────────────────────
+    datasets = [d for d in [
+        sn_cfg.get("dataset"), pn_cfg.get("dataset")
+    ] if d]
+    K        = sn_cfg.get("K") or pn_cfg.get("K", "?")
+    warmup   = sn_cfg.get("warmup_epochs") or pn_cfg.get("warmup_epochs", "?")
+    n_ag     = sn_cfg.get("n_agnostic") or pn_cfg.get("n_agnostic", "?")
+
+    return dict(
+        id="exp15", title="Exp 15 — Part-Composition Text Retrieval",
+        question="Does end-to-end training with part-composition text targets teach the encoder fine-grained structural discrimination?",
+        info=info_grid(
+            Model=tag_list(["RISA + ProjectionMLP"]),
+            Datasets=tag_list(datasets),
+            **{"Text Encoder": tag_list(["all-mpnet-base-v2"])},
+            Metric="R@1 · R@5 · mAP@5 · part_hit@10",
+            **{"K": str(K)},
+            **{"n_agnostic": str(n_ag)},
+            **{"Warmup": str(warmup) + " epochs"},
+        ),
+        table=cols,
         ai=ai,
     )
 
@@ -1449,6 +1767,10 @@ EXP_OVERVIEW = [
      "Projects RISA embeddings into ImageBind space via a small MLP. Evaluates shape-to-shape, image-to-shape, and zero-shot text-to-shape retrieval on ShapeNet."),
     ("Exp 11b","ImageBind Multi-Template Retrieval", "Does multi-template text-query averaging and text-loss weighting (λ=2.0) improve open-vocabulary 3D retrieval?",
      "Same ImageBind projection as Exp 11, but evaluates 10 text prompt templates per class and uses text-loss weight λ=2.0 with n_views=4 augmented views."),
+    ("Exp 14", "End-to-End Text Retrieval",          "Does end-to-end InfoNCE training on Objaverse text descriptions improve cross-dataset retrieval?",
+     "Unfreezes the RISA encoder and trains jointly with a projection MLP against Objaverse per-object text descriptions (tags + captions). Evaluates zero-shot transfer to ShapeNet and ModelNet40."),
+    ("Exp 15", "Part-Composition Text Retrieval",    "Does end-to-end training with part-composition text targets teach the encoder fine-grained structural discrimination?",
+     "Combines end-to-end RISA training (Exp 14) with structural part-composition text targets (Exp 13). Evaluates rotation robustness, part-query hit rates, and zero-shot transfer."),
 ]
 
 def build_overview():
@@ -1465,7 +1787,7 @@ def build_overview():
     # stat cards with animated counters
     stats = [
         ("93.7%", "RISA mAP@5", "Part Retrieval"),
-        ("8", "Experiments", "Across 3 datasets"),
+        ("10", "Experiments", "Across 3 datasets"),
         ("4", "Baselines", "SOTA comparisons"),
         ("19", "Rotation Angles", "0° → 180° SO(3)"),
     ]
@@ -1561,7 +1883,7 @@ def build_html(experiments):
         f'<p class="subtitle">3D Point Cloud Retrieval — Experiment Results</p>'
         f'<div class="badges">'
         f'<span class="badge">📅 {ts}</span>'
-        f'<span class="badge">🔬 8 Experiments</span>'
+        f'<span class="badge">🔬 10 Experiments</span>'
         f'<span class="badge">📦 ModelNet40 · ShapeNet · ScanObjectNN</span>'
         f'<span class="badge">⚡ SO(3) Invariant</span>'
         f'</div></header>'
@@ -1597,6 +1919,9 @@ def main():
         ("exp10", lambda: build_exp10(load("exp10_prior_selection.json"))),
         ("exp11",  lambda: build_exp11(load("exp11_imagebind_retrieval.json"))),
         ("exp11b", lambda: build_exp11b(load("exp11b_imagebind_retrieval.json"))),
+        ("exp14",  lambda: build_exp14(load("exp14_e2e_contrastive.json"))),
+        ("exp15",  lambda: build_exp15(load("exp15_e2e_part_contrastive.json"),
+                                       load("exp15_partnet_e2e_part_contrastive.json"))),
     ]
 
     if args.only:

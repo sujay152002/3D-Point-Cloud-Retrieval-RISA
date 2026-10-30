@@ -98,12 +98,10 @@ def load_h5_files(h5_dir: Path, split: str, num_points: int,
     pts_arr = np.stack(all_pts, axis=0).astype(np.float32)  # [N, P, 3]
     seg_arr = np.stack(all_seg, axis=0).astype(np.int32)    # [N, P]
 
-    # Remap part labels to contiguous 0-based within this category
-    unique_ids = np.unique(seg_arr)
-    id_map     = {old: new for new, old in enumerate(sorted(unique_ids))}
-    remapped   = np.vectorize(id_map.__getitem__)(seg_arr).astype(np.int32)
-
-    return pts_arr, remapped
+    # Keep original PartNet part IDs — do NOT remap.
+    # Remapping would break the correspondence with PARTNET_PART_NAMES
+    # which uses the original taxonomy IDs from the PartNet benchmark.
+    return pts_arr, seg_arr
 
 
 def main():
