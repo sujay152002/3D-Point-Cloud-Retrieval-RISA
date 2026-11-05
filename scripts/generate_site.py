@@ -729,24 +729,53 @@ def parse_exp10_log(log_path: Path):
     return data if data else None
 
 
-def build_exp10(data):
-    if not data:
-        data = parse_exp10_log(OUTPUTS / "exp10_all_priors.log")
-    if not data:
-        tbl = "<p class='pending'>Exp 10 still running — rerun update_site.sh when complete.</p>"
-        return dict(
-            id="exp10", title="Exp 10 — Prior Point Selection Ablation",
-            question="Which geometric prior best selects K=256 informative points from N=1024?",
-            info=info_grid(
-                Model=tag_list(["RISA"]),
-                Dataset=tag_list(["ModelNet40"]),
-                Metric="R@1 · mAP@5",
-                Training="Proxy Anchor, 100 epochs",
-                **{"K / N": "256 / 1024"},
-            ),
-            table=tbl, ai="<em>Results pending.</em>",
-        )
+def _build_exp10_dataset_block(ds_name, data):
+    """Render a single table + chart block for one dataset within exp10."""
     priors = list(data.keys())
+    prior_desc = {
+        "full_N":             "All 1024 points (baseline)",
+        "random_K":           "Random K points (lower bound)",
+        "fps_K":              "Farthest Point Sampling",
+        "eigenentropy_K":     "Eigenentropy — geometric complexity",
+        "surface_var_K":      "Surface Variation — e₃ / Σe",
+        "curvature_K":        "PCA Curvature — e₁ / Σe",
+        "salient_K":          "Learned Saliency — enc-token attention",
+        "aggregate_K":        "Aggregate — FPS + ball-query max-pool",
+        "knn_dist_entropy_K": "k-NN Distance Entropy",
+        "gumbel_K":           "Gumbel-Softmax Learned Selector",
+    }
+    rows = []
+    for p in priors:
+        ka = key_angles(data[p])
+        rows.append(td_row(
+            p, prior_desc.get(p, p),
+            fmt(ka.get(0,   {}).get("r1")),
+            fmt(ka.get(45,  {}).get("r1")),
+            fmt(ka.get(90,  {}).get("r1")),
+            fmt(ka.get(180, {}).get("r1")),
+            fmt(ka.get(0,   {}).get("map5")),
+        ))
+    tbl = make_table(
+        th("Prior", "Description", "R@1 0°", "R@1 45°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
+        rows, f"{ds_name} — K=256 from N=1024 — R@1 (%) and mAP@5 (%)"
+    )
+    series = [
+        (p, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[p]])
+        for i, p in enumerate(priors)
+    ]
+    chart = line_chart(series, title=f"R@1 (%) vs rotation angle — {ds_name}")
+    return (
+        f'<h3 class="ov-section-title" style="margin:.6rem 0 .4rem;font-size:.82rem">'
+        f'{ds_name}</h3>'
+        + chart + tbl
+    )
+
+
+def build_exp10(datasets):
+    """datasets: dict mapping display_name -> data_dict (prior -> list of records)."""
+    # Filter out any datasets that are None
+    datasets = {k: v for k, v in (datasets or {}).items() if v is not None}
+
     prior_meta = {
         "full_N":             ("All 1024 points (baseline)",
                                "No subsampling — all N points pass through attention. Compute upper bound. O(N²) attention cost."),
@@ -769,22 +798,31 @@ def build_exp10(data):
         "gumbel_K":           ("Gumbel-Softmax Learned Selector",
                                "Differentiable top-K selection via Gumbel-softmax straight-through. Scorer pretrained on eigenentropy targets then fine-tuned end-to-end with proxy-anchor loss."),
     }
-    prior_desc = {k: v[0] for k, v in prior_meta.items()}
-    rows = []
-    for p in priors:
-        ka = key_angles(data[p])
-        rows.append(td_row(
-            p, prior_desc.get(p, p),
-            fmt(ka.get(0,   {}).get("r1")),
-            fmt(ka.get(45,  {}).get("r1")),
-            fmt(ka.get(90,  {}).get("r1")),
-            fmt(ka.get(180, {}).get("r1")),
-            fmt(ka.get(0,   {}).get("map5")),
-        ))
-    tbl = make_table(
-        th("Prior", "Description", "R@1 0°", "R@1 45°", "R@1 90°", "R@1 180°", "mAP@5 0°"),
-        rows, "ModelNet40 — K=256 from N=1024 — R@1 (%) and mAP@5 (%)"
-    )
+
+    if not datasets:
+        # Fall back to old single-file log if available
+        old_data = parse_exp10_log(OUTPUTS / "exp10_all_priors.log")
+        if old_data:
+            datasets = {"ModelNet40": old_data}
+        else:
+            tbl = "<p class='pending'>Exp 10 still running — rerun update_site.sh when complete.</p>"
+            return dict(
+                id="exp10", title="Exp 10 — Prior Point Selection Ablation",
+                question="Which geometric prior best selects K=256 informative points from N=1024?",
+                info=info_grid(
+                    Model=tag_list(["RISA"]),
+                    Dataset=tag_list(["ModelNet40"]),
+                    Metric="R@1 · mAP@5",
+                    Training="Proxy Anchor, 100 epochs",
+                    **{"K / N": "256 / 1024"},
+                ),
+                table=tbl, ai="<em>Results pending.</em>",
+            )
+
+    # Build prior legend once (shared across datasets)
+    # Use priors from the first available dataset
+    first_data = next(iter(datasets.values()))
+    priors = list(first_data.keys())
     prior_colors = {
         p: COLORS[i % len(COLORS)] for i, p in enumerate(
             ["full_N","random_K","fps_K","eigenentropy_K","surface_var_K",
@@ -800,17 +838,31 @@ def build_exp10(data):
         f'</div>'
         for p in priors
     )
-    legend = f'<div class="prior-legend"><h3 class="ov-section-title" style="margin-bottom:.8rem">Prior Descriptions</h3><div class="prior-grid">{legend_cards}</div></div>'
-    series10 = [
-        (p, COLORS[i % len(COLORS)], [(r["angle"], r["r1"]) for r in data[p]])
-        for i, p in enumerate(priors)
-    ]
-    chart10 = line_chart(series10, title="R@1 (%) vs rotation angle — per prior")
-    summary = "\n".join(
-        f"{p}: R@1@0={fmt(key_angles(data[p]).get(0,{}).get('r1'))}%, "
-        f"mAP@5={fmt(key_angles(data[p]).get(0,{}).get('map5'))}%"
-        for p in priors
+    legend = (
+        f'<div class="prior-legend">'
+        f'<h3 class="ov-section-title" style="margin-bottom:.8rem">Prior Descriptions</h3>'
+        f'<div class="prior-grid">{legend_cards}</div>'
+        f'</div>'
     )
+
+    # One table+chart block per dataset
+    dataset_blocks = "".join(
+        _build_exp10_dataset_block(ds_name, data)
+        for ds_name, data in datasets.items()
+    )
+
+    # LLM summary uses all datasets — build a compact per-dataset summary
+    summary_lines = []
+    for ds_name, data in datasets.items():
+        summary_lines.append(f"[{ds_name}]")
+        for p in priors:
+            ka = key_angles(data[p])
+            summary_lines.append(
+                f"  {p}: R@1@0={fmt(ka.get(0,{}).get('r1'))}%, "
+                f"mAP@5={fmt(ka.get(0,{}).get('map5'))}%"
+            )
+    summary = "\n".join(summary_lines)
+
     ai = ask_llm(
         "You are a researcher analyzing a point selection prior ablation for 3D shape retrieval. "
         "The model processes N=1024 points but a prior selects K=256 points before the main attention layers, "
@@ -820,26 +872,30 @@ def build_exp10(data):
         "eigenentropy_K=top-256 by local eigenentropy (regions of geometric complexity), "
         "surface_var_K=top-256 by surface variation (high-curvature regions), "
         "curvature_K=top-256 by anisotropy (edge-like regions), "
-        "salient_K=top-256 by learned encoder attention weights (data-driven saliency). "
-        f"Results:\n{summary}\n"
-        "Write 5-6 sentences covering: (1) which prior achieves the best R@1 and mAP@5, "
+        "salient_K=top-256 by learned encoder attention weights (data-driven saliency), "
+        "aggregate_K=FPS+max-pool neighborhood aggregation, "
+        "knn_dist_entropy_K=k-NN distance entropy selection, "
+        "gumbel_K=Gumbel-softmax differentiable top-K selection. "
+        f"Results across {len(datasets)} datasets:\n{summary}\n"
+        "Write 5-6 sentences covering: (1) which prior achieves the best R@1 and mAP@5 consistently across datasets, "
         "(2) whether K=256 with a good prior can match or beat full N=1024 and what that implies about point cloud redundancy, "
-        "(3) how geometric priors (eigenentropy, surface_var, curvature) compare to the learned salient_K prior, "
-        "(4) why random_K is a useful lower bound and what the gap to fps_K reveals, "
+        "(3) how geometric priors (eigenentropy, surface_var, curvature) compare to the learned salient_K and gumbel_K priors, "
+        "(4) whether the ranking of priors is consistent across datasets or varies, "
         "(5) the practical implication: can we run RISA 4x faster with minimal accuracy loss by choosing the right prior?"
     )
+
     return dict(
         id="exp10", title="Exp 10 — Prior Point Selection Ablation",
         question="Which geometric prior best selects K=256 informative points from N=1024?",
         info=info_grid(
             Model=tag_list(["RISA"]),
-            Dataset=tag_list(["ModelNet40"]),
+            Datasets=tag_list(list(datasets.keys())),
             Metric="R@1 · mAP@5",
             Training="Proxy Anchor, 100 epochs",
             **{"K / N": "256 / 1024"},
             Priors=str(len(priors)),
         ),
-        table=legend + chart10 + tbl, ai=ai,
+        table=legend + dataset_blocks, ai=ai,
     )
 
 
@@ -1916,7 +1972,13 @@ def main():
         ("exp3",  lambda: build_exp3(load("exp3_ablation.json"))),
         ("exp4",  lambda: build_exp4(load("exp4_risa_old_100ep.json"), load("exp4_risa_perceiver_100ep.json"))),
         ("exp8",  lambda: build_exp8(load("exp8_part_retrieval.json"))),
-        ("exp10", lambda: build_exp10(load("exp10_prior_selection.json"))),
+        ("exp10", lambda: build_exp10({
+            "ModelNet40":   load("exp10_modelnet40.json"),
+            "ModelNet10":   load("exp10_modelnet10.json"),
+            "ShapeNet":     load("exp10_shapenet.json"),
+            "ScanObjectNN": load("exp10_scanobjectnn.json"),
+            "PartNet":      load("exp10_partnet.json"),
+        })),
         ("exp11",  lambda: build_exp11(load("exp11_imagebind_retrieval.json"))),
         ("exp11b", lambda: build_exp11b(load("exp11b_imagebind_retrieval.json"))),
         ("exp14",  lambda: build_exp14(load("exp14_e2e_contrastive.json"))),
@@ -1938,15 +2000,31 @@ def main():
             if not exp:
                 print(f"  No data for {name}, skipping."); continue
             new_panel = render_panel(exp)
-            pattern = re.compile(
-                rf'<div class="tab-panel[^"]*" id="{exp["id"]}".*?</div>\s*</div>',
-                re.DOTALL
+            # Find the panel start robustly
+            panel_start_re = re.compile(
+                rf'<div class="tab-panel[^"]*"\s+id="{exp["id"]}"'
             )
-            if pattern.search(html):
-                html = pattern.sub(new_panel, html, count=1)
+            m = panel_start_re.search(html)
+            if m:
+                # Walk forward counting <div> / </div> to find the balanced end
+                pos = m.start()
+                depth = 0
+                i = pos
+                while i < len(html):
+                    if html[i:i+4] == '<div':
+                        depth += 1
+                        i += 4
+                    elif html[i:i+6] == '</div>':
+                        depth -= 1
+                        i += 6
+                        if depth == 0:
+                            break
+                    else:
+                        i += 1
+                old_panel = html[pos:i]
+                html = html[:pos] + new_panel + html[i:]
                 print(f"  Patched: {exp['id']}")
             else:
-                # New panel — append before footer
                 html = html.replace('<footer', new_panel + '\n<footer', 1)
                 btn = (f'<button class="tab-btn" data-tab="{exp["id"]}" '
                        f'onclick="showTab(\'{exp["id"]}\')">'
