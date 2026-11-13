@@ -1423,6 +1423,202 @@ def build_exp15(data_sn, data_pn):
     )
 
 
+def build_exp16(data):
+    if not data:
+        return dict(
+            id="exp16", title="Exp 16 — 3D→LLM Space Alignment (Unfrozen Encoder)",
+            question="Can a jointly fine-tuned RISA encoder, aligned to a frozen LLM embedding space via contrastive learning, generalise zero-shot to unseen 3D shape datasets?",
+            info=info_grid(
+                Model=tag_list(["RISA + ProjectionMLP"]),
+                Dataset=tag_list(["Objaverse"]),
+                Metric="R@1 · R@5 · mAP@5",
+            ),
+            table="<p class='pending'>No results found — rerun update_site.sh when complete.</p>",
+            ai="<em>Results pending.</em>",
+        )
+
+    cfg        = data.get("config", {})
+    zs         = data.get("zero_shot_transfer", {})
+    train_hist = data.get("train_loss_history", [])
+    val_hist   = data.get("val_loss_history", [])
+
+    # ── Loss curves ───────────────────────────────────────────────────────────
+    if train_hist and val_hist:
+        loss_pts_train = [(i + 1, v) for i, v in enumerate(train_hist)]
+        loss_pts_val   = [(i + 1, v) for i, v in enumerate(val_hist)]
+        loss_series = [
+            ("Train loss", COLORS[0], loss_pts_train),
+            ("Val loss",   COLORS[1], loss_pts_val),
+        ]
+        loss_chart = line_chart(loss_series, title="InfoNCE loss curve (Objaverse, 50 epochs)")
+    else:
+        loss_chart = ""
+
+    # ── Zero-shot transfer table ──────────────────────────────────────────────
+    zs_data_rows = []
+    summary_lines = []
+    for ds, res in zs.items():
+        zs_data_rows.append((
+            (ds, f"{res.get('R@1', 0)*100:.1f}", f"{res.get('R@5', 0)*100:.1f}", f"{res.get('mAP@5', 0)*100:.1f}"),
+            False,
+        ))
+        summary_lines.append(
+            f"{ds}: R@1={res.get('R@1',0)*100:.1f}%, R@5={res.get('R@5',0)*100:.1f}%, mAP@5={res.get('mAP@5',0)*100:.1f}%"
+        )
+    zs_tbl = make_table_highlighted(
+        ["Dataset", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"],
+        zs_data_rows,
+        "Zero-shot transfer — shape-to-shape retrieval on held-out datasets (trained on Objaverse only)",
+    )
+
+    # ── What this experiment does box (shown at top of panel body) ────────────
+    what_box = (
+        "<div class='ai-box' style='margin-bottom:1.5rem'>"
+        "<div class='ai-label'>What this experiment does</div>"
+        "<p>Exp 16 asks whether a rotation-invariant 3D encoder (RISA) can be pulled into the same geometric space as a large language model's text embeddings — without any task-specific labels. "
+        "The setup: pre-generate LLM text embeddings for all 39,637 Objaverse training objects, then train a small ProjectionMLP on top of RISA to match those embeddings via InfoNCE contrastive loss. "
+        "The RISA encoder is <em>unfrozen</em> after a 5-epoch warmup, with a very conservative encoder learning rate (1e-6) so it adapts slowly without forgetting its rotation invariance. "
+        "If 3D shape embeddings can be aligned to language space, the model acquires semantic understanding it can transfer zero-shot to completely different 3D datasets it has never trained on.</p>"
+        "</div>"
+    )
+
+    summary = (
+        f"prior={cfg.get('prior')}, K={cfg.get('K')}, lr_risa={cfg.get('lr_risa')}, lr_proj={cfg.get('lr_proj')}, "
+        f"scan_augment={cfg.get('scan_augment')}, freeze_encoder={cfg.get('freeze_encoder')}, "
+        f"warmup={cfg.get('warmup_epochs')} epochs, trained 50 epochs (best @ 41, val_loss=3.015)\n"
+        + "\n".join(summary_lines)
+    )
+    ai = ask_llm(
+        "You are a researcher analyzing zero-shot 3D shape retrieval results. "
+        "The model (RISA + ProjectionMLP) was trained on Objaverse using InfoNCE loss to align 3D embeddings to pre-computed LLM text embeddings. "
+        "The RISA encoder was unfrozen after a 5-epoch warmup with lr_risa=1e-6 (very conservative). "
+        "It is then evaluated zero-shot — no fine-tuning — on ShapeNet, ModelNet40, ModelNet10, ScanObjectNN, and PartNet. "
+        f"Results:\n{summary}\n"
+        "Write 5-6 sentences covering: "
+        "(1) the most impressive zero-shot transfer result and what it shows about language-space alignment as a pretraining signal, "
+        "(2) why ScanObjectNN scores lowest (real-world LiDAR scans vs synthetic Objaverse training) and what domain gap factors cause this, "
+        "(3) how a very conservative lr_risa=1e-6 affects the trade-off between encoder adaptation and rotation invariance preservation, "
+        "(4) what the near-perfect objaverse in-distribution rotation robustness (100% across all angles) confirms about the encoder, "
+        "(5) what this result means for open-vocabulary 3D retrieval — using natural language as a supervision signal instead of class labels."
+    )
+
+    return dict(
+        id="exp16", title="Exp 16 — 3D→LLM Space Alignment (Unfrozen Encoder)",
+        question="Can a jointly fine-tuned RISA encoder, aligned to a frozen LLM embedding space via contrastive learning, generalise zero-shot to unseen 3D shape datasets?",
+        info=info_grid(
+            Model=tag_list(["RISA + ProjectionMLP"]),
+            Dataset=tag_list(["Objaverse"]),
+            **{"LLM Dim": "512"},
+            K="256 (fps_K)",
+            Epochs="50 (best @ 41)",
+            **{"lr_risa / lr_proj": "1e-6 / 1e-3"},
+            **{"Scan Aug": tag_list(["ON (train)"])},
+            Warmup="5 epochs",
+        ),
+        table=what_box + loss_chart + zs_tbl,
+        ai=ai,
+    )
+
+
+def build_exp17(data):
+    cfg        = (data or {}).get("config", {})
+    zs         = (data or {}).get("zero_shot_transfer", {})
+    train_hist = (data or {}).get("train_loss_history", [])
+    val_hist   = (data or {}).get("val_loss_history", [])
+
+    # ── What this experiment does box ─────────────────────────────────────────
+    what_box = (
+        "<div class='ai-box' style='margin-bottom:1.5rem'>"
+        "<div class='ai-label'>What this experiment does</div>"
+        "<p>Exp 17 is a direct follow-up to Exp 16, targeting the ScanObjectNN weak spot (31.3% R@1). "
+        "Two key changes: (1) the encoder learning rate is raised 100× from 1e-6 to 1e-4, giving RISA substantially more freedom to reshape its representations toward LLM space; "
+        "(2) scan-noise augmentation is applied during training — synthetic Objaverse point clouds are corrupted with realistic sensor noise, partial occlusions, and density variations that mimic LiDAR scans. "
+        "The idea: if the model is forced to produce consistent LLM-aligned embeddings even when the input looks like a noisy real-world scan, it should transfer better to ScanObjectNN at test time. "
+        "Training from random init (no warm-start), encoder unfreezes at epoch 6 after a 5-epoch warmup. "
+        "Patience is tightened to 7 epochs to avoid wasting compute if the higher LR destabilises training.</p>"
+        "</div>"
+    )
+
+    # ── Loss curves (if available) ────────────────────────────────────────────
+    loss_chart = ""
+    if train_hist and val_hist:
+        loss_pts_train = [(i + 1, v) for i, v in enumerate(train_hist)]
+        loss_pts_val   = [(i + 1, v) for i, v in enumerate(val_hist)]
+        loss_series = [
+            ("Train loss", COLORS[0], loss_pts_train),
+            ("Val loss",   COLORS[1], loss_pts_val),
+        ]
+        loss_chart = line_chart(loss_series, title="InfoNCE loss curve (Objaverse)")
+
+    # ── Results or in-progress notice ─────────────────────────────────────────
+    if zs:
+        zs_data_rows = []
+        summary_lines = []
+        for ds, res in zs.items():
+            zs_data_rows.append((
+                (ds, f"{res.get('R@1', 0)*100:.1f}", f"{res.get('R@5', 0)*100:.1f}", f"{res.get('mAP@5', 0)*100:.1f}"),
+                False,
+            ))
+            summary_lines.append(
+                f"{ds}: R@1={res.get('R@1',0)*100:.1f}%, R@5={res.get('R@5',0)*100:.1f}%, mAP@5={res.get('mAP@5',0)*100:.1f}%"
+            )
+        zs_tbl = make_table_highlighted(
+            ["Dataset", "R@1 (%)", "R@5 (%)", "mAP@5 (%)"],
+            zs_data_rows,
+            "Zero-shot transfer — shape-to-shape retrieval on held-out datasets (trained on Objaverse only)",
+        )
+        results_html = loss_chart + zs_tbl
+
+        summary = (
+            f"lr_risa={cfg.get('lr_risa')}, lr_proj={cfg.get('lr_proj')}, scan_augment={cfg.get('scan_augment')}, "
+            f"freeze_encoder={cfg.get('freeze_encoder')}, warmup={cfg.get('warmup_epochs')} epochs\n"
+            + "\n".join(summary_lines)
+        )
+        ai = ask_llm(
+            "You are a researcher analyzing zero-shot 3D shape retrieval results. "
+            "Exp 17 uses a higher encoder learning rate (lr_risa=1e-4, 100x higher than Exp 16's 1e-6) and scan-noise augmentation during Objaverse training. "
+            "The goal was to close the ScanObjectNN gap seen in Exp 16 (31.3% R@1). "
+            f"Exp 16 baseline: ShapeNet 84.7%, ModelNet40 55.7%, ModelNet10 63.8%, ScanObjectNN 31.3%, PartNet 67.0%.\n"
+            f"Exp 17 results:\n{summary}\n"
+            "Write 5-6 sentences covering: "
+            "(1) whether the higher lr_risa + scan augmentation improved ScanObjectNN and by how much, "
+            "(2) how results on other datasets changed vs Exp 16 — did the aggressive encoder LR hurt anywhere, "
+            "(3) what the train/val loss curves reveal about stability after the warmup unfreezes the encoder at epoch 6, "
+            "(4) whether scan augmentation alone or the combined effect of lr+aug drove the gains, "
+            "(5) what remaining gap to ScanObjectNN suggests about fundamental limits of synthetic-to-real transfer for 3D retrieval."
+        )
+    else:
+        status_box = (
+            "<div class='ai-box' style='border-left-color:#d29922;border-color:rgba(210,153,34,.2);"
+            "background:linear-gradient(135deg,rgba(210,153,34,.06),rgba(163,113,247,.04));margin-top:1rem'>"
+            "<div class='ai-label' style='color:#d29922'>Status — In Progress</div>"
+            "<p>This run is currently training (started 2026-11-12). Epoch 2 has completed "
+            "(train loss 3.311, val 3.274). Results will appear here once the run finishes. "
+            "Watch for whether the higher encoder LR (1e-4) destabilises training after warmup unfreezes at epoch 6, "
+            "and whether ScanObjectNN R@1 improves beyond the 31.3% ceiling from Exp 16.</p>"
+            "</div>"
+        )
+        results_html = status_box
+        ai = ""
+
+    return dict(
+        id="exp17", title="Exp 17 — Unfrozen Encoder + Scan Augmentation (Higher lr_risa)",
+        question="Does a higher encoder learning rate combined with scan-noise augmentation close the ScanObjectNN gap seen in Exp 16?",
+        info=info_grid(
+            Model=tag_list(["RISA + ProjectionMLP"]),
+            Dataset=tag_list(["Objaverse"]),
+            **{"LLM Dim": "512"},
+            K="256 (fps_K)",
+            Epochs="50 (patience=7)",
+            **{"lr_risa / lr_proj": "1e-4 / 1e-3"},
+            **{"Scan Aug": tag_list(["ON (train)"])},
+            Warmup="5 epochs",
+        ),
+        table=what_box + results_html,
+        ai=ai,
+    )
+
+
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
 CSS = """
@@ -1827,6 +2023,10 @@ EXP_OVERVIEW = [
      "Unfreezes the RISA encoder and trains jointly with a projection MLP against Objaverse per-object text descriptions (tags + captions). Evaluates zero-shot transfer to ShapeNet and ModelNet40."),
     ("Exp 15", "Part-Composition Text Retrieval",    "Does end-to-end training with part-composition text targets teach the encoder fine-grained structural discrimination?",
      "Combines end-to-end RISA training (Exp 14) with structural part-composition text targets (Exp 13). Evaluates rotation robustness, part-query hit rates, and zero-shot transfer."),
+    ("Exp 16", "3D→LLM Space Alignment",             "Can a jointly fine-tuned RISA encoder, aligned to a frozen LLM embedding space, generalise zero-shot to unseen 3D shape datasets?",
+     "Trains RISA + ProjectionMLP on Objaverse with InfoNCE against pre-computed LLM embeddings. Encoder unfrozen at epoch 6 (lr_risa=1e-6). Zero-shot transfer to ShapeNet, ModelNet40/10, ScanObjectNN, PartNet."),
+    ("Exp 17", "Unfrozen Encoder + Scan Augmentation", "Does a higher encoder LR combined with scan-noise augmentation close the ScanObjectNN gap from Exp 16?",
+     "Follow-up to Exp 16 with lr_risa=1e-4 (100× higher) and scan-noise augmentation on Objaverse. Targets the ScanObjectNN weak spot (31.3% R@1 in Exp 16). Currently in progress."),
 ]
 
 def build_overview():
@@ -1984,6 +2184,8 @@ def main():
         ("exp14",  lambda: build_exp14(load("exp14_e2e_contrastive.json"))),
         ("exp15",  lambda: build_exp15(load("exp15_e2e_part_contrastive.json"),
                                        load("exp15_partnet_e2e_part_contrastive.json"))),
+        ("exp16",  lambda: build_exp16(load("exp16_llm_retrieval.json"))),
+        ("exp17",  lambda: build_exp17(load("exp17_llm_retrieval.json"))),
     ]
 
     if args.only:
