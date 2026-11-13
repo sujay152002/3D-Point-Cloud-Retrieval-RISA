@@ -1427,7 +1427,8 @@ def arch_diagram_llm_alignment(show_scan_aug=False, width=780, height=230):
     """SVG pipeline diagram for Exp 16/17: Point Cloud → RISA → ProjectionMLP → LLM Space.
     show_scan_aug: if True, adds a scan-noise augmentation annotation (Exp 17).
     """
-    cid = _cid()
+    # Use stable IDs so patch-mode re-runs don't collide with other charts
+    cid = "arch-exp17" if show_scan_aug else "arch-exp16"
     # ── Layout constants ──────────────────────────────────────────────────────
     W, H = width, height
     # Box dimensions
