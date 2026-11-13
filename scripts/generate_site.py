@@ -1423,6 +1423,139 @@ def build_exp15(data_sn, data_pn):
     )
 
 
+def arch_diagram_llm_alignment(show_scan_aug=False, width=780, height=230):
+    """SVG pipeline diagram for Exp 16/17: Point Cloud → RISA → ProjectionMLP → LLM Space.
+    show_scan_aug: if True, adds a scan-noise augmentation annotation (Exp 17).
+    """
+    cid = _cid()
+    # ── Layout constants ──────────────────────────────────────────────────────
+    W, H = width, height
+    # Box dimensions
+    bw, bh = 108, 44
+    # Row centres
+    cy_top = 72    # main pipeline row
+    cy_bot = 162   # LLM text cache row
+
+    # Box x-centres for the main pipeline
+    # [Point Cloud] → [RISA Encoder] → [ProjectionMLP] → [3D Embedding] ↔ [LLM Embedding]
+    xs = [60, 195, 340, 485, 640]
+    labels_top = ["Point Cloud\n(N=1024 pts)", "RISA Encoder\n(2.4M params)", "Projection\nMLP (1.1M)", "3D Embed\n(dim=512)", "LLM Embed\n(dim=512, frozen)"]
+    colors_top = ["#1c2e4a", "#1a3a2a", "#2a1f3a", "#1c2e4a", "#2a2010"]
+    border_top = ["#58a6ff", "#3fb950", "#bc8cff", "#58a6ff", "#d29922"]
+    text_top   = ["#79c0ff", "#56d364", "#d2a8ff", "#79c0ff", "#e3b341"]
+
+    # LLM text cache box — centred under the LLM Embed box
+    x_cache = xs[4]
+    y_cache = cy_bot
+
+    # Scan aug annotation (Exp 17 only) — above RISA box
+    scan_y = cy_top - 56
+
+    out = []
+
+    # ── Background panel ──────────────────────────────────────────────────────
+    out.append(f'<rect x="0" y="0" width="{W}" height="{H}" rx="10" fill="#0d1117" stroke="#21262d" stroke-width="1"/>')
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    title = "Exp 17 — LLM Alignment Pipeline + Scan Augmentation" if show_scan_aug else "Exp 16 — LLM Alignment Pipeline"
+    out.append(f'<text x="{W//2}" y="20" font-size="11" font-weight="700" fill="#8b949e" text-anchor="middle" font-family="Inter,system-ui,sans-serif">{title}</text>')
+
+    # ── Warmup / unfreeze annotation on RISA box ──────────────────────────────
+    out.append(
+        f'<rect x="{xs[1]-52}" y="{cy_top - 36}" width="104" height="18" rx="4" fill="rgba(63,185,80,.12)" stroke="rgba(63,185,80,.35)" stroke-width="1"/>'
+        f'<text x="{xs[1]}" y="{cy_top - 24}" font-size="9" fill="#56d364" text-anchor="middle" font-family="Inter,system-ui,sans-serif">frozen 5 ep → unfrozen</text>'
+    )
+
+    # ── Scan augmentation annotation (Exp 17) ─────────────────────────────────
+    if show_scan_aug:
+        out.append(
+            f'<rect x="{xs[0]-52}" y="{scan_y}" width="108" height="20" rx="4" fill="rgba(210,153,34,.12)" stroke="rgba(210,153,34,.4)" stroke-width="1" stroke-dasharray="4,2"/>'
+            f'<text x="{xs[0]}" y="{scan_y + 13}" font-size="9" fill="#e3b341" text-anchor="middle" font-family="Inter,system-ui,sans-serif">+ scan noise aug</text>'
+            f'<line x1="{xs[0]}" y1="{scan_y+20}" x2="{xs[0]}" y2="{cy_top - bh//2 - 1}" stroke="#e3b341" stroke-width="1" stroke-dasharray="3,2" opacity="0.6"/>'
+        )
+
+    # ── Main pipeline arrows ──────────────────────────────────────────────────
+    for i in range(len(xs) - 1):
+        x1 = xs[i] + bw // 2
+        x2 = xs[i+1] - bw // 2
+        mid = (x1 + x2) // 2
+        out.append(
+            f'<line x1="{x1}" y1="{cy_top}" x2="{x2}" y2="{cy_top}" stroke="#30363d" stroke-width="1.5"/>'
+            f'<polygon points="{x2},{cy_top} {x2-7},{cy_top-4} {x2-7},{cy_top+4}" fill="#30363d"/>'
+        )
+
+    # ── InfoNCE loss arrow between 3D Embed and LLM Embed (bidirectional) ─────
+    # Replace the last arrow with a styled bidirectional one
+    x1 = xs[3] + bw // 2
+    x2 = xs[4] - bw // 2
+    out.append(
+        f'<line x1="{x1}" y1="{cy_top}" x2="{x2}" y2="{cy_top}" stroke="#f78166" stroke-width="2"/>'
+        f'<polygon points="{x2},{cy_top} {x2-8},{cy_top-4} {x2-8},{cy_top+4}" fill="#f78166"/>'
+        f'<polygon points="{x1},{cy_top} {x1+8},{cy_top-4} {x1+8},{cy_top+4}" fill="#f78166"/>'
+        f'<text x="{(x1+x2)//2}" y="{cy_top - 10}" font-size="9" fill="#f78166" text-anchor="middle" font-family="Inter,system-ui,sans-serif">InfoNCE</text>'
+    )
+
+    # ── Main pipeline boxes ───────────────────────────────────────────────────
+    for i, (x, label, bg, border, tc) in enumerate(zip(xs, labels_top, colors_top, border_top, text_top)):
+        lines = label.split("\n")
+        out.append(
+            f'<rect x="{x - bw//2}" y="{cy_top - bh//2}" width="{bw}" height="{bh}" rx="6" '
+            f'fill="{bg}" stroke="{border}" stroke-width="1.5"/>'
+        )
+        for j, line in enumerate(lines):
+            dy = cy_top - 7 + j * 15
+            weight = "700" if j == 0 else "400"
+            size = "10" if j == 0 else "9"
+            fill = tc if j == 0 else "#8b949e"
+            out.append(f'<text x="{x}" y="{dy}" font-size="{size}" font-weight="{weight}" fill="{fill}" text-anchor="middle" font-family="Inter,system-ui,sans-serif">{line}</text>')
+
+    # ── LLM text cache box + upward arrow ─────────────────────────────────────
+    cbw, cbh = 130, 38
+    out.append(
+        f'<rect x="{x_cache - cbw//2}" y="{y_cache - cbh//2}" width="{cbw}" height="{cbh}" rx="6" '
+        f'fill="#2a2010" stroke="#d29922" stroke-width="1.5" stroke-dasharray="5,3"/>'
+        f'<text x="{x_cache}" y="{y_cache - 7}" font-size="10" font-weight="700" fill="#e3b341" text-anchor="middle" font-family="Inter,system-ui,sans-serif">LLM Text Cache</text>'
+        f'<text x="{x_cache}" y="{y_cache + 8}" font-size="9" fill="#8b949e" text-anchor="middle" font-family="Inter,system-ui,sans-serif">39,637 embeddings (pre-computed)</text>'
+    )
+    # Arrow from cache up to LLM Embed box
+    out.append(
+        f'<line x1="{x_cache}" y1="{y_cache - cbh//2}" x2="{x_cache}" y2="{cy_top + bh//2 + 1}" stroke="#d29922" stroke-width="1.5" stroke-dasharray="4,2"/>'
+        f'<polygon points="{x_cache},{cy_top + bh//2 + 1} {x_cache-4},{cy_top + bh//2 + 9} {x_cache+4},{cy_top + bh//2 + 9}" fill="#d29922"/>'
+    )
+
+    # ── Zero-shot transfer arrow leaving 3D Embed downward ────────────────────
+    zs_x = xs[3]
+    zs_y_start = cy_top + bh // 2
+    zs_y_end   = H - 18
+    datasets_str = "ShapeNet · ModelNet40/10 · ScanObjectNN · PartNet"
+    out.append(
+        f'<line x1="{zs_x}" y1="{zs_y_start}" x2="{zs_x}" y2="{zs_y_end - 8}" stroke="#58a6ff" stroke-width="1.5" stroke-dasharray="4,2"/>'
+        f'<polygon points="{zs_x},{zs_y_end} {zs_x-4},{zs_y_end-8} {zs_x+4},{zs_y_end-8}" fill="#58a6ff"/>'
+        f'<text x="{zs_x}" y="{zs_y_end + 10}" font-size="9" fill="#58a6ff" text-anchor="middle" font-family="Inter,system-ui,sans-serif">zero-shot → {datasets_str}</text>'
+    )
+
+    # ── lr annotation on RISA (Exp 16 vs 17) ─────────────────────────────────
+    lr_label = "lr=1e-4" if show_scan_aug else "lr=1e-6"
+    lr_color = "#f78166" if show_scan_aug else "#8b949e"
+    out.append(
+        f'<text x="{xs[1]}" y="{cy_top + bh//2 + 14}" font-size="9" fill="{lr_color}" text-anchor="middle" font-family="Inter,system-ui,sans-serif">{lr_label}</text>'
+    )
+
+    svg_inner = "".join(out)
+    svg = (
+        f'<svg id="svg-{cid}" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+        f'style="display:block;margin:.5rem auto 1.5rem;max-width:100%">'
+        f'{svg_inner}</svg>'
+    )
+    return (
+        f'<div class="chart-wrap" data-cid="{cid}" style="position:relative">'
+        f'{svg}'
+        f'<button class="zoom-btn" onclick="openZoom(\'svg-{cid}\')" title="Expand">\u2922</button>'
+        f'<button class="dl-btn" onclick="downloadSVG(\'svg-{cid}\',\'arch\')" title="Download SVG">\u2913</button>'
+        f'</div>'
+    )
+
+
 def build_exp16(data):
     if not data:
         return dict(
@@ -1515,7 +1648,7 @@ def build_exp16(data):
             **{"Scan Aug": tag_list(["ON (train)"])},
             Warmup="5 epochs",
         ),
-        table=what_box + loss_chart + zs_tbl,
+        table=what_box + arch_diagram_llm_alignment(show_scan_aug=False) + loss_chart + zs_tbl,
         ai=ai,
     )
 
@@ -1567,7 +1700,7 @@ def build_exp17(data):
             zs_data_rows,
             "Zero-shot transfer — shape-to-shape retrieval on held-out datasets (trained on Objaverse only)",
         )
-        results_html = loss_chart + zs_tbl
+        results_html = arch_diagram_llm_alignment(show_scan_aug=True) + loss_chart + zs_tbl
 
         summary = (
             f"lr_risa={cfg.get('lr_risa')}, lr_proj={cfg.get('lr_proj')}, scan_augment={cfg.get('scan_augment')}, "
@@ -1598,7 +1731,7 @@ def build_exp17(data):
             "and whether ScanObjectNN R@1 improves beyond the 31.3% ceiling from Exp 16.</p>"
             "</div>"
         )
-        results_html = status_box
+        results_html = arch_diagram_llm_alignment(show_scan_aug=True) + status_box
         ai = ""
 
     return dict(
